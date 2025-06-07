@@ -296,5 +296,4 @@ For issues and questions:
 - **Ollama**: Local model serving with gemma2:9b
 - **Google AI**: Generative AI capabilities
 - **HuggingFace**: Sentence transformers for embeddings
-- **ChromaDB**: Vector database for document storage#   s e r v e r - c h a t  
- 
+- **ChromaDB**: Vector database for document storage
