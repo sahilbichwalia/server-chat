@@ -1,0 +1,52 @@
+2025-06-07 16:23:56,177 — src.config.logging_config — INFO — Loaded data for 58 servers
+2025-06-07 17:03:41,876 — src.config.logging_config — INFO — Loaded data for 58 servers
+2025-06-07 17:03:41,876 — src.config.logging_config — INFO — Processing data for 58 servers
+2025-06-07 17:03:42,146 — src.config.logging_config — INFO — Successfully processed data for 58 servers
+2025-06-07 17:03:42,146 — src.config.logging_config — INFO — Server rankings initialized.
+2025-06-07 17:03:46,979 — httpx — INFO — HTTP Request: GET https://api.gradio.app/gradio-messaging/en "HTTP/1.1 200 OK"
+2025-06-07 17:03:48,231 — src.config.logging_config — INFO — Starting Server Monitoring Assistant Application...
+2025-06-07 17:03:48,232 — src.config.logging_config — INFO — Creating Gradio interface...
+2025-06-07 17:03:48,232 — src.config.logging_config — CRITICAL — Unexpected fatal error during Gradio system initialization: 'Logger' object has no attribute 'getLogger'
+Traceback (most recent call last):
+  File "c:\Users\sahil\Desktop\chat-hpe\src\ui\ui.py", line 12, in create_gradio_interface
+    chat_system = IntegratedChatSystem()
+                  ^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\sahil\Desktop\chat-hpe\src\agents\chat_integration.py", line 15, in __init__
+    self.logger = logger.getLogger(self.__class__.__name__)
+                  ^^^^^^^^^^^^^^^^
+AttributeError: 'Logger' object has no attribute 'getLogger'
+2025-06-07 17:03:49,101 — httpx — INFO — HTTP Request: GET http://127.0.0.1:7860/gradio_api/startup-events "HTTP/1.1 200 OK"
+2025-06-07 17:03:49,475 — httpx — INFO — HTTP Request: HEAD http://127.0.0.1:7860/ "HTTP/1.1 200 OK"
+2025-06-07 17:03:50,107 — httpx — INFO — HTTP Request: GET https://api.gradio.app/pkg-version "HTTP/1.1 200 OK"
+2025-06-07 17:05:25,174 — src.config.logging_config — INFO — Loaded data for 58 servers
+2025-06-07 17:05:25,174 — src.config.logging_config — INFO — Processing data for 58 servers
+2025-06-07 17:05:25,461 — src.config.logging_config — INFO — Successfully processed data for 58 servers
+2025-06-07 17:05:25,461 — src.config.logging_config — INFO — Server rankings initialized.
+2025-06-07 17:05:28,903 — src.config.logging_config — INFO — Starting Server Monitoring Assistant Application...
+2025-06-07 17:05:28,904 — src.config.logging_config — INFO — Creating Gradio interface...
+2025-06-07 17:05:28,904 — src.config.logging_config — INFO — Initializing IntegratedChatSystem...
+2025-06-07 17:05:28,904 — src.config.logging_config — INFO — ChatOllama model 'models/gemini-1.5-flash' initialized and assigned globally.
+2025-06-07 17:05:28,904 — src.config.logging_config — INFO — Starting automatic RAG system initialization...
+2025-06-07 17:05:28,904 — src.config.logging_config — INFO — Found document directory: ./pdf
+2025-06-07 17:05:28,904 — src.config.logging_config — INFO — Initializing RAG system...
+2025-06-07 17:05:28,905 — src.config.logging_config — INFO — Loading PDF documents from ./pdf
+2025-06-07 17:05:29,166 — src.config.logging_config — INFO — Loaded PDF: ./pdf\hpe metrics.pdf (5 pages)
+2025-06-07 17:05:31,333 — httpx — INFO — HTTP Request: GET https://api.gradio.app/gradio-messaging/en "HTTP/1.1 200 OK"
+2025-06-07 17:05:38,035 — src.config.logging_config — INFO — Loaded PDF: ./pdf\HPE Server Energy Efficiency Knowledge Base(1).pdf (12 pages)
+2025-06-07 17:05:38,483 — src.config.logging_config — INFO — Loaded PDF: ./pdf\HPE Server Energy Efficiency Knowledge Base.pdf (10 pages)
+2025-06-07 17:05:38,485 — src.config.logging_config — INFO — Loaded 27 document chunks from 3 files
+2025-06-07 17:05:38,485 — src.config.logging_config — INFO — Setting up vector store
+2025-06-07 17:05:38,485 — src.config.logging_config — INFO — Creating ChromaDB directory: ./chroma_db
+2025-06-07 17:05:38,485 — src.config.logging_config — INFO — Split documents into 29 chunks
+2025-06-07 17:05:39,902 — chromadb.telemetry.product.posthog — INFO — Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-06-07 17:05:43,781 — src.config.logging_config — INFO — Persistent vector store created successfully
+2025-06-07 17:05:43,820 — src.config.logging_config — INFO — RAG chain with conversation memory created successfully
+2025-06-07 17:05:43,821 — src.config.logging_config — INFO — RAG system initialized successfully
+2025-06-07 17:05:43,821 — src.config.logging_config — INFO — RAG system auto-initialization completed successfully
+2025-06-07 17:05:43,833 — src.config.logging_config — INFO — AgentExecutor created successfully with create_react_agent and refined prompt.
+2025-06-07 17:05:43,833 — src.config.logging_config — INFO — Final RAG system status: {'rag_chain_initialized': True, 'vectorstore_initialized': True, 'system_ready': True, 'chroma_db_exists': True, 'documents_directory_exists': False}
+2025-06-07 17:05:43,833 — src.config.logging_config — INFO — Chat agent setup complete.
+2025-06-07 17:05:43,833 — src.config.logging_config — INFO — IntegratedChatSystem initialized for Gradio.
+2025-06-07 17:05:44,161 — src.config.logging_config — INFO — Gradio interface created successfully.
+2025-06-07 17:05:44,716 — httpx — INFO — HTTP Request: GET http://127.0.0.1:7860/gradio_api/startup-events "HTTP/1.1 200 OK"
+2025-06-07 17:05:44,744 — httpx — INFO — HTTP Request: HEAD http://127.0.0.1:7860/ "HTTP/1.1 200 OK"
