@@ -71,7 +71,7 @@ def setup_vector_store(documents: List) -> Optional[object]:
     # Use RecursiveCharacterTextSplitter for better chunking
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000, 
-        chunk_overlap=200,
+        chunk_overlap=300,
         separators=["\n\n", "\n", " ", ""]  # Better separation strategy
     )
     
@@ -137,7 +137,7 @@ def setup_rag_chain(vectorstore: object, llm_instance: object) -> Optional[objec
         # Set up the retriever
         retriever = vectorstore.as_retriever(
             search_type="similarity",  # Explicitly set search type
-            search_kwargs={"k": 3}
+            search_kwargs={"k": 5}
         )
         
         # Set up conversation buffer memory
