@@ -5,7 +5,7 @@ logger = setup_logging()
 # -----------------------------
 # Gradio UI
 # -----------------------------
-def create_gradio_interface():
+def create_gradio_interface(server_data=None):
     logger.info("Creating Gradio interface...")
     try:
         # This will initialize llm_instance globally
