@@ -1,4 +1,5 @@
-from src.data_processing.loader import server_data_raw
+from src.data_processing.loader import load_data
+from . import initialize_data
 from src.config.logging_config import setup_logging
 from src.common.common import DEFAULT_CARBON_INTENSITY,BASE_POWER, MAX_POWER
 from datetime import datetime
@@ -11,6 +12,7 @@ def estimate_power(cpu_util: float) -> float:
     max_power = MAX_POWER
     return base_power + ((max_power - base_power) * cpu_util / 100.0)
 
+server_data_raw = initialize_data()
 # -----------------------------
 # Data Processing Functions
 # -----------------------------
