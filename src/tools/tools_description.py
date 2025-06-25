@@ -2,8 +2,9 @@ from langchain.tools import Tool
 from src.tools.tool_function import list_servers, get_top_servers_by_cpu_util, get_specific_server_cpu_utilization, \
     get_lowest_servers_by_cpu_util, get_top_servers_by_ambient_temp, get_specific_server_ambient_temp,get_lowest_servers_by_ambient_temp, get_top_servers_by_peak, get_specific_server_peak_data, \
     get_lowest_servers_by_peak, get_server_stats, calculate_carbon_footprint, co2_emission_server, calculate_carbon_footprint_lowest, identify_high_cpu_servers, get_server_timestamps, get_filtered_server_records, detect_anomalies
-from src.tools.rag import query_documents, list_available_documents, identify_low_cpu_servers
-from src.tools.prediction import ServerMetricsPredictor
+from src.tools.rag import query_documents, list_available_documents
+from src.tools.prediction import predict_server_metrics_tool
+from src.tools.tool_function import identify_low_cpu_servers
 
 tools = [
     Tool(
@@ -540,7 +541,7 @@ Tool(
     ),
      Tool(
     name="ServerMetricsPredictor",
-    func=ServerMetricsPredictor().predict_server_metrics,
+    func=predict_server_metrics_tool,
     description=(
         "Predict server metrics (CPU utilization, ambient temperature, power consumption) for future dates. "
         "Uses Prophet machine learning models trained on historical server data. "
