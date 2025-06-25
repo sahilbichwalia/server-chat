@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 import pandas as pd
 from prophet import Prophet
+from src.data_processing.loader import server_data_raw
 from src.config.logging_config import setup_logging
 logger = setup_logging()
 
