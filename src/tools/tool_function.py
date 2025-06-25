@@ -1235,6 +1235,10 @@ def get_server_stats(query: str) -> str:
         potential_serial = match.group(1).upper()
         if potential_serial in processed_server_data:
             specific_server_serial = potential_serial
+        else:
+            # Invalid serial number - server doesn't exist
+            return f"Server {potential_serial} does not exist."
+    
     if specific_server_serial:
         data = processed_server_data[specific_server_serial]
         result = f"Server {specific_server_serial} Statistics:\n" + "=" * (len(specific_server_serial) + 20) + "\n\n"
@@ -1266,20 +1270,27 @@ def get_server_stats(query: str) -> str:
         if data.get('co2_emissions'):
             result += f"  Est. CO2 (avg grid): {data['co2_emissions'].get('average_grid', 'N/A')} kg\n"
         return result.strip()
+    
+    # Default response when no server specified
+    if not processed_server_data:
+        return "No server data available."
+    
     result = "Server Fleet Statistics Summary (Top 10 by Peak CPU shown):\n" + "=" * 50 + "\n\n"
-    if not processed_server_data: return "No server data available for summary."
     servers_to_show = server_rankings.get("top_cpu", [])[:10]
+    
     if not servers_to_show:
         result += "No ranked servers to display in summary.\n"
         count = 0
         for serial, data_item in processed_server_data.items():
-            if count >=5: break
+            if count >= 5: 
+                break
             latest = data_item.get("latest_record", {})
             result += f"Server {serial} (Last Seen: {latest.get('time_str', 'N/A')}):\n"
             result += f"  Latest CPU: {latest.get('cpu_util', 'N/A')}%, Peak CPU: {data_item.get('peak_cpu_util', 'N/A')}%\n"
             result += f"  Latest Amb Temp: {latest.get('amb_temp', 'N/A')}°C, Max Amb Temp: {data_item.get('max_amb_temp', 'N/A')}°C\n\n"
-            count +=1
-        if count == 0: result += "No server data processed to display.\n"
+            count += 1
+        if count == 0: 
+            result += "No server data processed to display.\n"
     else:
         for serial, peak_cpu in servers_to_show:
             data = processed_server_data[serial]
@@ -1288,6 +1299,7 @@ def get_server_stats(query: str) -> str:
             result += f"  Last Observed: {latest.get('time_str', 'N/A')}\n"
             result += f"  Current CPU: {latest.get('cpu_util', 'N/A')}%\n"
             result += f"  Current Ambient: {latest.get('amb_temp', 'N/A')}°C\n\n"
+    
     result += "For specific server details, query 'stats for server [SERIAL_NUMBER]'.\n"
     result += f"Total processed servers: {len(processed_server_data)}.\n"
     return result
@@ -1674,3 +1686,83 @@ def detect_anomalies(query: str) -> str:
     
     return "\n".join(output)
 
+def identify_low_cpu_servers(query: str) -> str:
+    """
+    Identifies servers with CPU usage below a specified threshold.
+    
+    Args:
+        query: String containing CPU threshold (e.g., 'CPU below 20%')
+    
+    Returns:
+        Formatted string with servers having CPU below threshold
+    """
+    if not processed_server_data: 
+        return "No server data available."
+    
+    match = re.search(r'(\d+(\.\d+)?)', query)
+    if not match: 
+        return "Please specify a CPU threshold (e.g., 'CPU below 20%')"
+    
+    try: 
+        threshold = float(match.group(1))
+    except ValueError: 
+        return "Invalid number for CPU threshold."
+    
+    if not (0 <= threshold <= 100): 
+        return f"Invalid threshold: {threshold}%. Must be 0-100."
+    
+    low_cpu_servers_details = []
+    
+    for serial, server_info in processed_server_data.items():
+        if 'all_records' not in server_info or not server_info['all_records']: 
+            continue
+            
+        low_cpu_count = 0
+        min_cpu_this_server = 100.0  # Start with max possible CPU
+        total_valid_records = 0
+        
+        for record in server_info['all_records']:
+            cpu_util = record.get('cpu_util')
+            if cpu_util is None: 
+                continue
+                
+            try: 
+                cpu_util_float = float(cpu_util)
+            except (ValueError, TypeError): 
+                continue
+                
+            total_valid_records += 1
+            
+            if cpu_util_float < threshold: 
+                low_cpu_count += 1
+            if cpu_util_float < min_cpu_this_server: 
+                min_cpu_this_server = cpu_util_float
+        
+        if low_cpu_count > 0 and total_valid_records > 0:
+            percentage_low_cpu_time = (low_cpu_count / total_valid_records) * 100
+            low_cpu_servers_details.append({
+                'serial': serial, 
+                'low_cpu_count': low_cpu_count,
+                'total_records': total_valid_records, 
+                'percentage': percentage_low_cpu_time,
+                'min_cpu_observed': min_cpu_this_server
+            })
+    
+    if not low_cpu_servers_details: 
+        return f"No servers found with CPU below {threshold}%"
+    
+    # Sort by percentage of time below threshold (descending), then by minimum CPU observed (ascending)
+    low_cpu_servers_details.sort(key=lambda x: (x['percentage'], -x['min_cpu_observed']), reverse=True)
+    
+    result = f"Servers with CPU records below {threshold}% (sorted by prevalence & min CPU):\n"
+    result += f"Found {len(low_cpu_servers_details)} server(s) out of {len(processed_server_data)} total.\n\n"
+    
+    for i, stats in enumerate(low_cpu_servers_details[:20], 1):
+        result += f"{i:2d}. Server: {stats['serial']}\n"
+        result += f"    Instances <{threshold}%: {stats['low_cpu_count']}/{stats['total_records']} ({stats['percentage']:.1f}% of records)\n"
+        result += f"    Lowest CPU recorded: {stats['min_cpu_observed']:.1f}%\n\n"
+    
+    if len(low_cpu_servers_details) > 20: 
+        result += f"... and {len(low_cpu_servers_details) - 20} more."
+    
+    return result
