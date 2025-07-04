@@ -1,7 +1,9 @@
+from typing import Optional
 from src.config.logging_config import setup_logging
 from src.common.common import LLM_INSTANCE
 import threading
 import re
+import gradio as gr
 from src.tools.rag import auto_initialize_rag_on_startup, get_rag_system_status
 from src.agents.setup import setup_agent
 logger = setup_logging()
@@ -77,13 +79,10 @@ class IntegratedChatSystem:
         response_text = re.sub(r'\n{3,}', '\n\n', response_text) # Normalize multiple newlines
         return response_text.strip()
 
-    def process_query(self, query: str, chat_history: list[tuple[str, str]]) -> tuple[str, list[tuple[str, str]]]: # Replaced typing.List/Tuple
+    def process_query(self, query: str, chat_history: list[tuple[str, str]]) -> tuple[str, list[tuple[str, str]], Optional[str]]:
         if not self.semaphore.acquire(timeout=0.5):
             self.logger.warning("Semaphore acquisition timeout. Request concurrent or system busy.")
-            # Optionally return a message to display in chat history:
-            # chat_history.append((query, "The assistant is busy. Please try again in a moment."))
-            # return "", chat_history # This would clear the input box
-            return query, chat_history # Keep query in input box for user to retry
+            return query, chat_history, None  # Keep input box, no file path
 
         try:
             self.logger.info(f"Processing query: '{query}'")
@@ -91,43 +90,44 @@ class IntegratedChatSystem:
             if not query.strip():
                 response = "Please enter a question."
                 chat_history.append((query, response))
-                return "", chat_history # Clear input box, update history
+                return "", chat_history, None  # Clear input, no file
 
             if not self.agent_executor:
-                # This should ideally be caught at startup by create_gradio_interface
                 self.logger.error("Agent executor is not initialized!")
                 response = "The assistant is not properly initialized. Please check system logs."
                 chat_history.append((query, response))
-                return "", chat_history
+                return "", chat_history, None
 
-            # The agent's memory (ConversationBufferWindowMemory) handles chat_history.
-            # We pass it as `chat_history` in the input dict if the prompt expects it.
-            # The ReAct prompt template `system_template` has `{chat_history}`.
-            # The memory object formats this history appropriately.
-            agent_input = {"input": query} # `chat_history` is implicitly handled by the memory attached to AgentExecutor
-
+            agent_input = {"input": query}
             agent_response_dict = self.agent_executor.invoke(agent_input)
 
-            # `output` is the key AgentExecutor uses for the final response or tool output if direct.
             response_text = agent_response_dict.get("output", "Sorry, I could not process that effectively right now.")
-
             cleaned_response = self.clean_response_text(response_text)
 
-            if not cleaned_response or len(cleaned_response) < 3: # Stricter check for emptiness
-                 # This might happen if a tool returns an empty string and `return_direct=True`
-                 # Or if the LLM gives a very terse "Final Answer:"
-                 cleaned_response = "I processed your request, but there wasn't much to say, or the result was empty. Can I help with something else?"
-                 self.logger.warning(f"Agent returned a very short/empty response. Original: '{response_text}', Using: '{cleaned_response}'")
+            if not cleaned_response or len(cleaned_response) < 3:
+                cleaned_response = "I processed your request, but there wasn't much to say, or the result was empty. Can I help with something else?"
+                self.logger.warning(f"Agent returned a short/empty response. Original: '{response_text}', Using: '{cleaned_response}'")
 
             chat_history.append((query, cleaned_response))
             self.logger.info(f"Successfully processed query. Response: '{cleaned_response[:100]}...'")
-            return "", chat_history # Clear input box
+
+            # 🔍 Check for CSV path in response
+            csv_match = re.search(r"download it here:\s*(temp_reports[\\/][\w\-\.]+\.csv)", cleaned_response)
+            csv_file = csv_match.group(1).replace("\\", "/") if csv_match else None
+
+            if csv_file:
+                return "", chat_history, gr.update(value=csv_file, visible=True)
+            else:
+                return "", chat_history, gr.update(visible=False)
 
         except Exception as e:
             self.logger.error(f"Error processing query '{query}': {e}", exc_info=True)
-            # Provide a user-friendly error message
-            error_response_msg = "I encountered a system error while processing your request. Please try rephrasing or simplify your query. If the problem continues, please check the logs or contact support."
+            error_response_msg = (
+                "I encountered a system error while processing your request. Please try rephrasing or simplify your query. "
+                "If the problem continues, please check the logs or contact support."
+            )
             chat_history.append((query, error_response_msg))
-            return "", chat_history # Clear input box
+            return "", chat_history, None
+
         finally:
             self.semaphore.release()
