@@ -41,30 +41,45 @@ def create_gradio_interface(server_data=None):
             label="Your question:",
             placeholder="E.g., 'List all servers', 'Top 3 servers by highest peak CPU', 'Carbon footprint for SGH949WW81 low carbon'",
             lines=2,
-            show_label=False # Label is part of the placeholder effectively
+            show_label=False
         )
 
+        # CSV download component (hidden by default)
+        csv_output = gr.File(label="📥 Download CSV Report", visible=False)
+
         with gr.Row():
-            submit_btn = gr.Button("Submit", variant="primary", scale=3) # Give submit more width
-            clear_btn = gr.ClearButton([msg_input, chatbot_ui], value="Clear Chat", scale=1)
+            submit_btn = gr.Button("Submit", variant="primary", scale=3)
+            clear_btn = gr.ClearButton([msg_input, chatbot_ui, csv_output], value="Clear Chat", scale=1)
 
         gr.Examples(
-            examples=[
-                "List all servers",
+            examples=["List all servers",
                 "Top 3 servers by highest peak CPU",
                 "Carbon footprint for all servers using average grid",
                 "Show me records for server SGH949WW81 where amb_temp is greater_than 28", # Agent must translate this to JSON
                 "Identify servers with CPU utilization consistently above 85%",
                 "What are the timestamps for server SGH001TEST?",
-                "Hello there"
-            ],
+                "Hello there"],  # Keep your existing examples
             inputs=msg_input,
             label="Example Questions"
         )
 
+        # Wire the click function
+        submit_btn.click(
+            fn=chat_system.process_query,
+            inputs=[msg_input, chatbot_ui],
+            outputs=[msg_input, chatbot_ui, csv_output]
+        )
+
+        msg_input.submit(
+            fn=chat_system.process_query,
+            inputs=[msg_input, chatbot_ui],
+            outputs=[msg_input, chatbot_ui, csv_output]
+        )
+
+
         # Wire up the chat processing function
-        submit_btn.click(chat_system.process_query, [msg_input, chatbot_ui], [msg_input, chatbot_ui])
-        msg_input.submit(chat_system.process_query, [msg_input, chatbot_ui], [msg_input, chatbot_ui])
+        # submit_btn.click(chat_system.process_query, [msg_input, chatbot_ui], [msg_input, chatbot_ui])
+        # msg_input.submit(chat_system.process_query, [msg_input, chatbot_ui], [msg_input, chatbot_ui])
 
     logger.info("Gradio interface created successfully.")
     return demo

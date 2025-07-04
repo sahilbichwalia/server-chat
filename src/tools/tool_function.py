@@ -1,20 +1,352 @@
-from src.data_processing.data_preprocessing import processed_server_data,server_rankings,estimate_power
-from src.common.common import EFFICIENCY_THRESHOLDS, DEFAULT_CARBON_INTENSITY
-from src.config.logging_config import setup_logging
+import pandas as pd
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+from reportlab.lib.units import inch
+from io import BytesIO
+import os
+import json
 import re
-from typing import  List, Optional # Replaced with modern builtins
+import csv
+from typing import List, Optional
 from word2number import w2n
 from collections import Counter
-import json
 
+# Assuming these are available globally from data_preprocessing
+from src.data_processing.data_preprocessing import processed_server_data, server_rankings, estimate_power
+from src.common.common import EFFICIENCY_THRESHOLDS, DEFAULT_CARBON_INTENSITY
+from src.config.logging_config import setup_logging
 
-logger=setup_logging()
-
+logger = setup_logging()
 
 # -----------------------------
-# Tool Functions
+# Helper Functions for Structured Data (New/Modified for PDF reports)
+# These functions return raw Python data structures (lists of dicts)
+# that can be used for PDF generation.
 # -----------------------------
-def list_servers(_:str) -> str:
+
+def _get_all_servers_data_structured() -> List[dict]:
+    """Returns all server data in a structured (list of dicts) format for reports."""
+    all_data = []
+    if not processed_server_data:
+        return []
+
+    for serial, server_info in processed_server_data.items():
+        latest_rec = server_info.get("latest_record", {})
+        avg_cpu = server_info.get("avg_cpu_util")
+        all_temps = [rec['amb_temp'] for rec in server_info.get("all_records", []) if rec.get('amb_temp') is not None]
+        avg_temp = round(sum(all_temps) / len(all_temps), 1) if all_temps else None
+        record_count = len(server_info.get("all_records", []))
+        
+        # Get peak values (using a robust method from existing functions)
+        peak_cpu = server_info.get("peak_cpu_record", {}).get("cpu_util", "N/A")
+        peak_temp = server_info.get("max_temp_record", {}).get("amb_temp", "N/A")
+        peak_power = server_info.get("max_peak_record", {}).get("cpu_watts", "N/A") # Assuming peak_watts for report
+        
+        all_data.append({
+            "Serial": serial,
+            "Last Seen": latest_rec.get('time_str', "N/A"),
+            "Total Records": record_count,
+            "Avg CPU (%)": f"{avg_cpu:.1f}" if avg_cpu is not None else "N/A",
+            "Avg Temp (°C)": f"{avg_temp:.1f}" if avg_temp is not None else "N/A",
+            "Peak CPU (%)": f"{peak_cpu:.1f}" if isinstance(peak_cpu, (int, float)) else "N/A",
+            "Peak Temp (°C)": f"{peak_temp:.1f}" if isinstance(peak_temp, (int, float)) else "N/A",
+            "Peak Power (W)": f"{peak_power:.1f}" if isinstance(peak_power, (int, float)) else "N/A"
+        })
+    return all_data
+
+def _get_top_n_cpu_servers_structured(n: int) -> List[dict]:
+    """Returns top N CPU servers in structured format."""
+    if not server_rankings.get("top_cpu") or not processed_server_data:
+        return []
+
+    ranked_servers = server_rankings["top_cpu"]
+    num_to_show = min(n, len(ranked_servers))
+    
+    structured_data = []
+    for serial, peak_cpu_val in ranked_servers[:num_to_show]:
+        server_info = processed_server_data.get(serial)
+        if not server_info or not server_info.get("peak_cpu_record"):
+            continue
+        peak_record = server_info["peak_cpu_record"]
+        structured_data.append({
+            "Serial": serial,
+            "Peak CPU (%)": f"{peak_cpu_val:.1f}",
+            "Timestamp": peak_record.get('time_str', 'N/A'),
+            "Power (W)": peak_record.get('power_consumption', 'N/A'),
+            "Temperature (°C)": peak_record.get('temperature', 'N/A'),
+            "Fan Speed (RPM)": peak_record.get('fan_speed', 'N/A')
+        })
+    return structured_data
+
+def _get_high_cpu_servers_structured(threshold: float) -> List[dict]:
+    """Returns servers with CPU above threshold in structured format."""
+    if not processed_server_data:
+        return []
+
+    high_cpu_servers_details = []
+    for serial, server_info in processed_server_data.items():
+        if 'all_records' not in server_info or not server_info['all_records']:
+            continue
+        
+        high_cpu_count = 0
+        max_cpu_this_server = 0.0
+        for record in server_info['all_records']:
+            cpu_util = record.get('cpu_util')
+            if cpu_util is None:
+                continue
+            try:
+                cpu_util_float = float(cpu_util)
+            except (ValueError, TypeError):
+                continue
+            
+            if cpu_util_float > threshold:
+                high_cpu_count += 1
+            if cpu_util_float > max_cpu_this_server:
+                max_cpu_this_server = cpu_util_float
+        
+        if high_cpu_count > 0:
+            total_records = len(server_info['all_records'])
+            percentage_high_cpu_time = (high_cpu_count / total_records) * 100 if total_records > 0 else 0
+            
+            high_cpu_servers_details.append({
+                'Serial': serial,
+                f'Instances >{threshold}%': f"{high_cpu_count}/{total_records}",
+                f'Percentage >{threshold}%': f"{percentage_high_cpu_time:.1f}%",
+                'Highest CPU Recorded (%)': f"{max_cpu_this_server:.1f}"
+            })
+    
+    # Sort by percentage, then max_cpu_observed
+    high_cpu_servers_details.sort(key=lambda x: (float(x[f'Percentage >{threshold}%'].replace('%','')), float(x['Highest CPU Recorded (%)'])), reverse=True)
+    
+    return high_cpu_servers_details
+
+
+def _get_anomaly_data_structured(query: str) -> List[dict]:
+    """
+    Returns structured anomaly data. Reuses logic from detect_anomalies but returns a list of dicts.
+    """
+    # This largely mirrors the data collection part of detect_anomalies,
+    # but instead of formatting a string, it collects structured data.
+
+    METRIC_KEYWORDS = {
+        "cpu_util": ["cpu utilization", "cpu util", "cpu usage", "strange behavior in cpu", "cpu load"],
+        "amb_temp": ["ambient temperature", "amb temp", "temperature", "temperature spikes"],
+        "cpu_watts": ["cpu power", "cpu watts", "power consumption", "power usage"],
+        "dimm_watts": ["memory power", "dimm watts", "dimm memory power"],
+    }
+    
+    def extract_metrics(query: str) -> List[str]:
+        query = query.lower()
+        matched = []
+        for metric, aliases in METRIC_KEYWORDS.items():
+            for phrase in aliases:
+                if phrase in query:
+                    matched.append(metric)
+                    break
+        return matched if matched else ["cpu_util", "amb_temp", "cpu_watts", "dimm_watts"]
+
+    def find_anomalies_structured(values, timestamps, metric_name, server_serial):
+        if not values or len(values) < 3:
+            return [], None
+        
+        values = [float(v) for v in values]
+        median = sorted(values)[len(values)//2]
+        deviations = [abs(x - median) for x in values]
+        mad = sorted(deviations)[len(deviations)//2]
+        
+        if mad == 0:
+            return [], median
+        
+        base_threshold = 3.5
+        threshold = base_threshold
+        if len(values) < 10:
+            threshold = 3.0
+        elif len(values) > 100:
+            threshold = base_threshold + (len(values) / 500)
+        
+        anomalies = []
+        seen = set()
+        modified_z_scores = [0.6745 * (x - median) / mad for x in values]
+        
+        for i, score in enumerate(modified_z_scores):
+            if abs(score) > threshold:
+                anomaly_key = f"{values[i]}-{timestamps[i]}"
+                if anomaly_key not in seen:
+                    seen.add(anomaly_key)
+                    anomalies.append({
+                        "Server": server_serial,
+                        "Metric": metric_name,
+                        "Value": values[i],
+                        "Z-Score": round(score, 2),
+                        "Timestamp": timestamps[i]
+                    })
+        return anomalies, median
+
+    analyze_all = True
+    specific_server = None
+    query_lower = query.lower()
+    
+    potential_serial = extract_server_name(query, set(processed_server_data.keys()))
+    if potential_serial:
+        analyze_all = False
+        specific_server = potential_serial
+
+    metrics_to_check = extract_metrics(query)
+
+    servers_to_check = list(processed_server_data.keys()) if analyze_all else [specific_server]
+    all_anomalies_structured = []
+    
+    for serial in servers_to_check:
+        server_data = processed_server_data.get(serial)
+        if not server_data:
+            continue
+        records = server_data.get("all_records", [])
+        if not records:
+            continue
+        for metric in metrics_to_check:
+            values = []
+            timestamps = []
+            for record in records:
+                val = record.get(metric)
+                if val is not None:
+                    values.append(val)
+                    timestamps.append(record["time_str"])
+            
+            if values:
+                metric_anomalies, _ = find_anomalies_structured(values, timestamps, metric, serial)
+                all_anomalies_structured.extend(metric_anomalies)
+    
+    # Optionally, add summary data (e.g., total anomalies, frequent times) to the structured report
+    # For now, just the raw anomaly list. You could add a 'summary' dict to the list if needed.
+    return all_anomalies_structured
+
+
+def _get_carbon_footprint_data_structured(query: str) -> List[dict]:
+    """
+    Returns structured carbon footprint data based on query (all, top N, lowest N, specific).
+    """
+    if not processed_server_data:
+        return []
+
+    carbon_intensity_key = 'average_grid'
+    num_servers_to_show = float('inf') # Default to all
+    
+    query_lower = query.lower()
+    
+    # Parse carbon intensity preference
+    if "low carbon" in query_lower or "renewable" in query_lower:
+        carbon_intensity_key = 'low_carbon_grid'
+    elif "high carbon" in query_lower or "coal" in query_lower:
+        carbon_intensity_key = 'high_carbon_grid'
+    
+    # Parse number of servers to show (for top/lowest N)
+    if "top" in query_lower or "highest" in query_lower or "most emitting" in query_lower:
+        num_servers_to_show = extract_server_count(query, default=len(processed_server_data))
+    elif "lowest" in query_lower or "least emitting" in query_lower or "most efficient" in query_lower:
+        num_servers_to_show = extract_server_count(query, default=len(processed_server_data))
+
+    intensity_factor = DEFAULT_CARBON_INTENSITY.get(carbon_intensity_key, DEFAULT_CARBON_INTENSITY['average_grid'])
+    
+    results = []
+    for serial, server_data in processed_server_data.items():
+        energy_kwh = server_data.get("estimated_energy_kwh", 0)
+        if energy_kwh == 0:
+            continue
+        
+        co2_kg = energy_kwh * intensity_factor
+        
+        avg_cpu = server_data.get("avg_cpu_util", 0)
+        if avg_cpu == 0:
+            efficiency = "idle"
+        else:
+            power_ratio = estimate_power(avg_cpu) / (50 + (300 - 50) * (avg_cpu/100))
+            efficiency = "poor"
+            for rating, threshold in EFFICIENCY_THRESHOLDS["cpu_power_ratio"].items():
+                if power_ratio <= threshold:
+                    efficiency = rating
+                    break
+
+        results.append({
+            "Serial": serial,
+            "Energy Consumed (kWh)": round(energy_kwh, 2),
+            "CO2 Emissions (kg)": round(co2_kg, 2),
+            "Avg CPU Util (%)": f"{avg_cpu:.1f}",
+            "Efficiency Rating": efficiency.capitalize(),
+            "Carbon Intensity Used": carbon_intensity_key.replace('_', ' ').title()
+        })
+    
+    if "lowest" in query_lower or "least emitting" in query_lower or "most efficient" in query_lower:
+        sorted_results = sorted(results, key=lambda x: x["CO2 Emissions (kg)"], reverse=False)
+    else: # Default to highest for "top" or general carbon footprint queries
+        sorted_results = sorted(results, key=lambda x: x["CO2 Emissions (kg)"], reverse=True)
+
+    if num_servers_to_show == float('inf'):
+        return sorted_results
+    else:
+        return sorted_results[:int(num_servers_to_show)]
+
+
+def generate_csv_report(report_query: str) -> str:
+    """
+    Generates a CSV report based on the natural language query for the report type.
+    This function will be called by the `GenerateReport` tool.
+    """
+    report_type_lower = report_query.lower()
+    report_data = []
+    report_title = "Server Monitoring Report"
+    headers = []
+
+    # --- Data Retrieval Logic ---
+    if "all servers" in report_type_lower or "list of servers" in report_type_lower:
+        report_data = _get_all_servers_data_structured()
+        report_title = "All Monitored Servers Report"
+        headers = list(report_data[0].keys()) if report_data else ["No Data Available"]
+
+    elif "top cpu servers" in report_type_lower:
+        match = re.search(r"top (\d+)", report_type_lower)
+        n = int(match.group(1)) if match else 10
+        report_data = _get_top_n_cpu_servers_structured(n)
+        report_title = f"Top {n} Servers by CPU Utilization"
+        headers = list(report_data[0].keys()) if report_data else ["No Data Available"]
+
+    elif "servers with cpu above" in report_type_lower:
+        match = re.search(r"above (\d+)%", report_type_lower)
+        threshold = int(match.group(1)) if match else 50
+        report_data = _get_high_cpu_servers_structured(threshold)
+        report_title = f"Servers with CPU Utilization Above {threshold}%"
+        headers = list(report_data[0].keys()) if report_data else ["No Data Available"]
+
+    # --- Future Report Types ---
+    # elif "anomaly report" in report_type_lower:
+    #     report_data = _get_anomaly_data_structured()
+    #     report_title = "Anomaly Report"
+    #     headers = list(report_data[0].keys()) if report_data else ["No Anomalies Detected"]
+
+    # --- CSV Generation ---
+    if not report_data:
+        return "No data found for the requested report type. Please try a different query."
+
+    temp_dir = "temp_reports"
+    os.makedirs(temp_dir, exist_ok=True)
+    file_name = f"server_report_{os.urandom(4).hex()}.csv"
+    file_path = os.path.join(temp_dir, file_name)
+
+    try:
+        with open(file_path, mode='w', newline='', encoding='utf-8') as file:
+            writer = csv.DictWriter(file, fieldnames=headers)
+            writer.writeheader()
+            for row in report_data:
+                # Write row with default value for missing keys
+                sanitized_row = {key: row.get(key, 'N/A') for key in headers}
+                writer.writerow(sanitized_row)
+        return file_path
+    except Exception as e:
+        return f"Error generating CSV report: {e}"
+    
+
+def list_servers(_: str) -> str:
     if not processed_server_data:
         return "Error: No server data available."
     serials = list(processed_server_data.keys())
@@ -34,18 +366,14 @@ def list_servers(_:str) -> str:
         avg_temp = round(sum(all_temps) / len(all_temps), 1) if all_temps else None
         record_count = len(server_info.get("all_records", []))
         
+        avg_cpu_str = f"{avg_cpu:.1f}%" if avg_cpu is not None else "N/A"
+        avg_temp_str = f"{avg_temp:.1f}°C" if avg_temp is not None else "N/A"
+
         result += f"   - Last Seen: {time_str}\n"
         result += f"   - Total Records: {record_count}\n"
-        
-        avg_cpu_str = f"{avg_cpu:.1f}%" if avg_cpu is not None else "N/A"
         result += f"   - Average CPU: {avg_cpu_str}\n"
-        
-        avg_temp_str = f"{avg_temp:.1f}°C" if avg_temp is not None else "N/A"
-        result += f"   - Average Ambient Temp: {avg_temp_str}\n"
-        
-        result += "\n" # Single blank line separator between servers
+        result += f"   - Average Ambient Temp: {avg_temp_str}\n\n"
     return result
-
 
 def extract_server_count(text: str, default: int = 10) -> float:
     if not text or not isinstance(text, str):
@@ -57,12 +385,11 @@ def extract_server_count(text: str, default: int = 10) -> float:
     digits = re.findall(r'\d+', text.replace(',', ''))
     if digits:
         try:
-            return float(digits[0]) # Use the first number found
+            return float(digits[0])
         except ValueError: 
             pass 
 
     try:
-        # Keep this word removal conservative to avoid removing parts of numbers
         cleaned_words = [word for word in text_clean.split() if word not in {'top', 'show', 'give', 'me', 'the', 'first', 'last', 'highest', 'lowest', 'servers', 'server'}]
         if cleaned_words:
             try:
@@ -109,68 +436,40 @@ def get_top_servers_by_cpu_util(query: str = "") -> str:
     if num_to_show > available_servers and num_servers_float != float('inf'):
         result += f"Note: Requested {num_to_show}, but only {available_servers} servers have relevant data.\n"
     return result
+
 def get_specific_server_cpu_utilization(query: str) -> str:
-    """
-    Get CPU utilization data for specific server(s) with robust server identification.
-    Can handle single or multiple servers in one query.
-    
-    Args:
-        query: Natural language query containing:
-               - One or more server serial numbers (e.g. "server SGH227WTNK and ABC123", "SGH227WTNK, DEF456")
-               - CPU utilization request
-    
-    Returns:
-        Formatted string with CPU utilization data for the specified server(s)
-        or error message if server(s) not found
-    """
     if not processed_server_data:
         return "No server data available."
     
     found_servers = []
-    
-    # Robust server serial extraction with multiple patterns
     server_patterns = [
-        r'server\s+([A-Za-z0-9_-]+)',  # "server ABC123"
-        r'([A-Za-z0-9]{6,})',          # Direct alphanumeric codes like "SGH227WTNK"
-        r'([A-Za-z0-9_-]{5,})'         # Alphanumeric with underscores/hyphens
+        r'server\s+([A-Za-z0-9_-]+)',
+        r'([A-Za-z0-9]{6,})',
+        r'([A-Za-z0-9_-]{5,})'
     ]
-    
-    # Collect all potential server matches
     potential_servers = set()
-    
-    # Try each pattern to find all server serials
     for pattern in server_patterns:
         matches = re.findall(pattern, query, re.IGNORECASE)
         for match in matches:
             potential_serial = match.upper().strip()
-            # Check if this serial exists in our data
             if potential_serial in processed_server_data:
                 potential_servers.add(potential_serial)
-    
-    # Fallback: check if any known server serial appears directly in query
     query_upper = query.upper()
     for serial_key in processed_server_data.keys():
-        # Check for exact match or serial as substring with word boundaries
         if re.search(r'\b' + re.escape(serial_key) + r'\b', query_upper):
             potential_servers.add(serial_key)
-    
-    # Additional fallback: fuzzy matching for common typos
     if not potential_servers:
-        # Split query into potential server tokens
         tokens = re.findall(r'[A-Za-z0-9]{5,}', query)
         for token in tokens:
             token_clean = re.sub(r'[^A-Za-z0-9]', '', token.upper())
             if len(token_clean) >= 5:
                 for serial_key in processed_server_data.keys():
                     serial_clean = re.sub(r'[^A-Za-z0-9]', '', serial_key)
-                    # Check if cleaned token matches cleaned serial
                     if token_clean == serial_clean:
                         potential_servers.add(serial_key)
                         break
-    
     found_servers = list(potential_servers)
     
-    # If no servers found, return helpful error message
     if not found_servers:
         available_servers = list(processed_server_data.keys())
         sample_servers = ', '.join(available_servers[:5])
@@ -182,14 +481,11 @@ def get_specific_server_cpu_utilization(query: str) -> str:
                 f"Example usage: 'CPU utilization for server {available_servers[0]}' or "
                 f"'{available_servers[0]} and {available_servers[1]} CPU utilization'")
     
-    # Get CPU utilization data for all found servers
     results = []
     servers_with_data = 0
     
     for server_serial in sorted(found_servers):
         server_data = processed_server_data[server_serial]
-        
-        # Check if CPU utilization data exists
         if not server_data.get("peak_cpu_record"):
             results.append({
                 "serial": server_serial,
@@ -198,8 +494,6 @@ def get_specific_server_cpu_utilization(query: str) -> str:
             continue
         
         peak_cpu_record = server_data["peak_cpu_record"]
-        
-        # Get the peak CPU utilization from server rankings if available
         peak_cpu_util = None
         if server_rankings.get("top_cpu"):
             for serial, cpu_util in server_rankings["top_cpu"]:
@@ -207,25 +501,20 @@ def get_specific_server_cpu_utilization(query: str) -> str:
                     peak_cpu_util = cpu_util
                     break
         
-        # Fallback to peak_cpu_record if not found in rankings
         if peak_cpu_util is None:
             peak_cpu_util = peak_cpu_record.get("cpu_util", "N/A")
         
-        # Calculate efficiency rating
         avg_cpu = server_data.get("avg_cpu_util", 0)
         if avg_cpu == 0:
             efficiency = "idle"
         else:
-            # Calculate power ratio only for active servers
             power_ratio = estimate_power(avg_cpu) / (50 + (300 - 50) * (avg_cpu/100))
-            
-            efficiency = "poor"  # Default to poor
+            efficiency = "poor"
             for rating, threshold in EFFICIENCY_THRESHOLDS["cpu_power_ratio"].items():
                 if power_ratio <= threshold:
                     efficiency = rating
                     break
         
-        # Get server ranking position if available
         ranking_position = "N/A"
         if server_rankings.get("top_cpu"):
             for i, (serial, _) in enumerate(server_rankings["top_cpu"]):
@@ -247,9 +536,7 @@ def get_specific_server_cpu_utilization(query: str) -> str:
             "ranking_position": ranking_position
         })
     
-    # Format output based on number of servers
     if len(found_servers) == 1:
-        # Single server detailed output
         result = results[0]
         if "error" in result:
             return f"Server {result['serial']}: {result['error']}"
@@ -265,11 +552,9 @@ def get_specific_server_cpu_utilization(query: str) -> str:
         output += f"   - Fleet Ranking: {result['ranking_position']}\n"
         
     else:
-        # Multiple servers output
         output = f"CPU utilization data for {len(found_servers)} specified servers:\n\n"
         
         if servers_with_data > 0:
-            # Calculate summary statistics
             valid_peak_cpus = [r["peak_cpu_util"] for r in results if "error" not in r and r["peak_cpu_util"] is not None]
             valid_avg_cpus = [r["avg_cpu_util"] for r in results if "error" not in r and r["avg_cpu_util"] is not None]
             
@@ -302,7 +587,6 @@ def get_specific_server_cpu_utilization(query: str) -> str:
                 output += f"   - Efficiency: {result['efficiency'].capitalize()}\n\n"
     
     return output
-
 
 def get_lowest_servers_by_cpu_util(query: str = "") -> str:
     if not server_rankings.get("bottom_cpu"):
@@ -371,67 +655,38 @@ def get_top_servers_by_ambient_temp(query: str = "") -> str:
     return result
 
 def get_specific_server_ambient_temp(query: str) -> str:
-    """
-    Get ambient temperature data for specific server(s) with robust server identification.
-    Can handle single or multiple servers in one query.
-    
-    Args:
-        query: Natural language query containing:
-               - One or more server serial numbers (e.g. "server SGH227WTNK and ABC123", "SGH227WTNK, DEF456")
-               - Ambient temperature request
-    
-    Returns:
-        Formatted string with ambient temperature data for the specified server(s)
-        or error message if server(s) not found
-    """
     if not processed_server_data:
         return "No server data available."
     
     found_servers = []
-    
-    # Robust server serial extraction with multiple patterns
     server_patterns = [
-        r'server\s+([A-Za-z0-9_-]+)',  # "server ABC123"
-        r'([A-Za-z0-9]{6,})',          # Direct alphanumeric codes like "SGH227WTNK"
-        r'([A-Za-z0-9_-]{5,})'         # Alphanumeric with underscores/hyphens
+        r'server\s+([A-Za-z0-9_-]+)',
+        r'([A-Za-z0-9]{6,})',
+        r'([A-Za-z0-9_-]{5,})'
     ]
-    
-    # Collect all potential server matches
     potential_servers = set()
-    
-    # Try each pattern to find all server serials
     for pattern in server_patterns:
         matches = re.findall(pattern, query, re.IGNORECASE)
         for match in matches:
             potential_serial = match.upper().strip()
-            # Check if this serial exists in our data
             if potential_serial in processed_server_data:
                 potential_servers.add(potential_serial)
-    
-    # Fallback: check if any known server serial appears directly in query
     query_upper = query.upper()
     for serial_key in processed_server_data.keys():
-        # Check for exact match or serial as substring with word boundaries
         if re.search(r'\b' + re.escape(serial_key) + r'\b', query_upper):
             potential_servers.add(serial_key)
-    
-    # Additional fallback: fuzzy matching for common typos
     if not potential_servers:
-        # Split query into potential server tokens
         tokens = re.findall(r'[A-Za-z0-9]{5,}', query)
         for token in tokens:
             token_clean = re.sub(r'[^A-Za-z0-9]', '', token.upper())
             if len(token_clean) >= 5:
                 for serial_key in processed_server_data.keys():
                     serial_clean = re.sub(r'[^A-Za-z0-9]', '', serial_key)
-                    # Check if cleaned token matches cleaned serial
                     if token_clean == serial_clean:
                         potential_servers.add(serial_key)
                         break
-    
     found_servers = list(potential_servers)
     
-    # If no servers found, return helpful error message
     if not found_servers:
         available_servers = list(processed_server_data.keys())
         sample_servers = ', '.join(available_servers[:5])
@@ -443,14 +698,11 @@ def get_specific_server_ambient_temp(query: str) -> str:
                 f"Example usage: 'ambient temperature for server {available_servers[0]}' or "
                 f"'{available_servers[0]} and {available_servers[1]} ambient temperature'")
     
-    # Get ambient temperature data for all found servers
     results = []
     servers_with_data = 0
     
     for server_serial in sorted(found_servers):
         server_data = processed_server_data[server_serial]
-        
-        # Check if ambient temperature data exists
         if not server_data.get("max_temp_record"):
             results.append({
                 "serial": server_serial,
@@ -459,7 +711,6 @@ def get_specific_server_ambient_temp(query: str) -> str:
             continue
         
         temp_record = server_data["max_temp_record"]
-        # Get the max ambient temperature from server rankings if available
         max_ambient_temp = None
         if server_rankings.get("top_amb_temp"):
             for serial, temp in server_rankings["top_amb_temp"]:
@@ -467,7 +718,6 @@ def get_specific_server_ambient_temp(query: str) -> str:
                     max_ambient_temp = temp
                     break
         
-        # Fallback to temp_record if not found in rankings
         if max_ambient_temp is None:
             max_ambient_temp = temp_record.get("amb_temp", "N/A")
         
@@ -483,9 +733,7 @@ def get_specific_server_ambient_temp(query: str) -> str:
             "avg_ambient_temp": server_data.get("avg_ambient_temp", "N/A")
         })
     
-    # Format output based on number of servers
     if len(found_servers) == 1:
-        # Single server detailed output
         result = results[0]
         if "error" in result:
             return f"Server {result['serial']}: {result['error']}"
@@ -499,11 +747,9 @@ def get_specific_server_ambient_temp(query: str) -> str:
         output += f"   - DIMM Power at Peak: {result['dimm_watts']}W\n"
         
     else:
-        # Multiple servers output
         output = f"Ambient temperature data for {len(found_servers)} specified servers:\n\n"
         
         if servers_with_data > 0:
-            # Calculate summary statistics
             valid_max_temps = [r["max_ambient_temp"] for r in results if "error" not in r and r["max_ambient_temp"] is not None]
             if valid_max_temps:
                 avg_max_temp = sum(valid_max_temps) / len(valid_max_temps)
@@ -597,67 +843,38 @@ def get_top_servers_by_peak(query: str = "") -> str:
     return result
 
 def get_specific_server_peak_data(query: str) -> str:
-    """
-    Get peak data for specific server(s) with robust server identification.
-    Can handle single or multiple servers in one query.
-    
-    Args:
-        query: Natural language query containing:
-               - One or more server serial numbers (e.g. "server SGH227WTNK and ABC123", "SGH227WTNK, DEF456")
-               - Peak data request
-    
-    Returns:
-        Formatted string with peak data for the specified server(s)
-        or error message if server(s) not found
-    """
     if not processed_server_data:
         return "No server data available."
     
     found_servers = []
-    
-    # Robust server serial extraction with multiple patterns
     server_patterns = [
-        r'server\s+([A-Za-z0-9_-]+)',  # "server ABC123"
-        r'([A-Za-z0-9]{6,})',          # Direct alphanumeric codes like "SGH227WTNK"
-        r'([A-Za-z0-9_-]{5,})'         # Alphanumeric with underscores/hyphens
+        r'server\s+([A-Za-z0-9_-]+)',
+        r'([A-Za-z0-9]{6,})',
+        r'([A-Za-z0-9_-]{5,})'
     ]
-    
-    # Collect all potential server matches
     potential_servers = set()
-    
-    # Try each pattern to find all server serials
     for pattern in server_patterns:
         matches = re.findall(pattern, query, re.IGNORECASE)
         for match in matches:
             potential_serial = match.upper().strip()
-            # Check if this serial exists in our data
             if potential_serial in processed_server_data:
                 potential_servers.add(potential_serial)
-    
-    # Fallback: check if any known server serial appears directly in query
     query_upper = query.upper()
     for serial_key in processed_server_data.keys():
-        # Check for exact match or serial as substring with word boundaries
         if re.search(r'\b' + re.escape(serial_key) + r'\b', query_upper):
             potential_servers.add(serial_key)
-    
-    # Additional fallback: fuzzy matching for common typos
     if not potential_servers:
-        # Split query into potential server tokens
         tokens = re.findall(r'[A-Za-z0-9]{5,}', query)
         for token in tokens:
             token_clean = re.sub(r'[^A-Za-z0-9]', '', token.upper())
             if len(token_clean) >= 5:
                 for serial_key in processed_server_data.keys():
                     serial_clean = re.sub(r'[^A-Za-z0-9]', '', serial_key)
-                    # Check if cleaned token matches cleaned serial
                     if token_clean == serial_clean:
                         potential_servers.add(serial_key)
                         break
-    
     found_servers = list(potential_servers)
     
-    # If no servers found, return helpful error message
     if not found_servers:
         available_servers = list(processed_server_data.keys())
         sample_servers = ', '.join(available_servers[:5])
@@ -669,14 +886,11 @@ def get_specific_server_peak_data(query: str) -> str:
                 f"Example usage: 'peak data for server {available_servers[0]}' or "
                 f"'{available_servers[0]} and {available_servers[1]} peak values'")
     
-    # Get peak data for all found servers
     results = []
     servers_with_data = 0
     
     for server_serial in sorted(found_servers):
         server_data = processed_server_data[server_serial]
-        
-        # Check if peak data exists
         if not server_data.get("max_peak_record"):
             results.append({
                 "serial": server_serial,
@@ -685,7 +899,6 @@ def get_specific_server_peak_data(query: str) -> str:
             continue
         
         peak_record = server_data["max_peak_record"]
-        # Get the max peak value from server rankings if available
         max_peak_value = None
         if server_rankings.get("top_peak"):
             for serial, peak_val in server_rankings["top_peak"]:
@@ -693,7 +906,6 @@ def get_specific_server_peak_data(query: str) -> str:
                     max_peak_value = peak_val
                     break
         
-        # Fallback to peak_record if not found in rankings
         if max_peak_value is None:
             max_peak_value = peak_record.get("peak_value", "N/A")
         
@@ -709,9 +921,7 @@ def get_specific_server_peak_data(query: str) -> str:
             "avg_peak_value": server_data.get("avg_peak_value", "N/A")
         })
     
-    # Format output based on number of servers
     if len(found_servers) == 1:
-        # Single server detailed output
         result = results[0]
         if "error" in result:
             return f"Server {result['serial']}: {result['error']}"
@@ -725,11 +935,9 @@ def get_specific_server_peak_data(query: str) -> str:
         output += f"   - CPU Power at Peak: {result['cpu_watts']}W\n"
         
     else:
-        # Multiple servers output
         output = f"Peak data for {len(found_servers)} specified servers:\n\n"
         
         if servers_with_data > 0:
-            # Calculate summary statistics
             valid_peak_values = [r["max_peak_value"] for r in results if "error" not in r and r["max_peak_value"] is not None]
             if valid_peak_values:
                 avg_peak = sum(valid_peak_values) / len(valid_peak_values)
@@ -755,7 +963,6 @@ def get_specific_server_peak_data(query: str) -> str:
                 output += f"   - CPU Power at Peak: {result['cpu_watts']}W\n\n"
     
     return output
-
 
 def get_lowest_servers_by_peak(query: str = "") -> str:
     if not server_rankings.get("bottom_peak"):
@@ -791,33 +998,18 @@ def get_lowest_servers_by_peak(query: str = "") -> str:
     return result
 
 def calculate_carbon_footprint(query: str) -> str:
-    """
-    Calculate carbon footprint for multiple servers or fleet-wide analysis.
-    Handles requests for all servers or top N servers with different grid types.
-    
-    Args:
-        query: Natural language query that may contain:
-               - Carbon intensity type (e.g. "low carbon", "average", "high carbon")
-               - Number of servers to show (e.g. "top 5", "all servers")
-    
-    Returns:
-        Formatted string with carbon footprint results for multiple servers
-    """
     if not processed_server_data:
         return "No server data available."
     
-    # Default values
     carbon_intensity = 'average_grid'
     num_servers_to_show = extract_server_count(query, default=10)
     
-    # Parse carbon intensity preference
     query_lower = query.lower()
     if "low carbon" in query_lower or "renewable" in query_lower:
         carbon_intensity = 'low_carbon_grid'
     elif "high carbon" in query_lower or "coal" in query_lower:
         carbon_intensity = 'high_carbon_grid'
     
-    # Validate carbon intensity input
     if carbon_intensity not in DEFAULT_CARBON_INTENSITY:
         return f"Invalid carbon intensity. Choose from: {', '.join(DEFAULT_CARBON_INTENSITY.keys())}"
     
@@ -825,30 +1017,24 @@ def calculate_carbon_footprint(query: str) -> str:
     total_co2 = 0.0
     results = []
     
-    # Process all servers
     for serial in processed_server_data.keys():
         server_data = processed_server_data[serial]
         energy_kwh = server_data.get("estimated_energy_kwh", 0)
         
-        # Skip servers with insufficient data
         if energy_kwh == 0:
             continue
         
-        # Calculate CO2 emissions
         co2_kg = energy_kwh * intensity_factor
         total_co2 += co2_kg
         
-        # Get efficiency rating
         avg_cpu = server_data["avg_cpu_util"]
         
-        # Special case for 0% utilization
         if avg_cpu == 0:
             efficiency = "idle"
         else:
-            # Calculate power ratio only for active servers
             power_ratio = estimate_power(avg_cpu) / (50 + (300 - 50) * (avg_cpu/100))
             
-            efficiency = "poor"  # Default to poor
+            efficiency = "poor"
             for rating, threshold in EFFICIENCY_THRESHOLDS["cpu_power_ratio"].items():
                 if power_ratio <= threshold:
                     efficiency = rating
@@ -866,7 +1052,6 @@ def calculate_carbon_footprint(query: str) -> str:
     if not results:
         return "No valid server data available for carbon footprint calculation."
     
-    # Multiple servers summary output
     grid_type_display = carbon_intensity.replace('_', ' ').title()
     available_servers = len(results)
     
@@ -875,15 +1060,12 @@ def calculate_carbon_footprint(query: str) -> str:
     output += f"   - Average per Server: {round(total_co2/available_servers, 2)} kg\n\n"
     
     if num_servers_to_show == float('inf'):
-        # Show all servers
         top_count = available_servers
         output += f"All {available_servers} servers:\n\n"
     else:
-        # Show requested number of servers
         top_count = min(int(num_servers_to_show), available_servers)
         output += f"Top {top_count} highest emitting servers:\n\n"
     
-    # Add top N highest emitters
     sorted_results = sorted(results, key=lambda x: x["co2_kg"], reverse=True)
     
     for i, res in enumerate(sorted_results[:top_count]):
@@ -893,7 +1075,6 @@ def calculate_carbon_footprint(query: str) -> str:
         output += f"   - CPU Utilization: {res['avg_cpu']}%\n"
         output += f"   - Efficiency Rating: {res['efficiency'].capitalize()}\n\n"
             
-    # Add efficiency distribution
     eff_dist = {}
     for res in results:
         eff_dist[res["efficiency"]] = eff_dist.get(res["efficiency"], 0) + 1
@@ -905,82 +1086,54 @@ def calculate_carbon_footprint(query: str) -> str:
 
     return output
 
-
 def co2_emission_server(query: str) -> str:
-    """
-    Calculate carbon footprint for specific server(s) with robust server identification.
-    Can handle single or multiple servers in one query.
-    
-    Args:
-        query: Natural language query containing:
-               - One or more server serial numbers (e.g. "server SGH227WTNK and ABC123", "SGH227WTNK, DEF456")
-               - Optional carbon intensity type (e.g. "low carbon", "average", "high carbon")
-    
-    Returns:
-        Formatted string with carbon footprint results for the specified server(s)
-        or error message if server(s) not found
-    """
     if not processed_server_data:
         return "No server data available."
     
-    # Default carbon intensity
     carbon_intensity = 'average_grid'
     found_servers = []
     
-    # Parse carbon intensity preference
     query_lower = query.lower()
     if "low carbon" in query_lower or "renewable" in query_lower:
         carbon_intensity = 'low_carbon_grid'
     elif "high carbon" in query_lower or "coal" in query_lower:
         carbon_intensity = 'high_carbon_grid'
     
-    # Validate carbon intensity input
     if carbon_intensity not in DEFAULT_CARBON_INTENSITY:
         return f"Invalid carbon intensity. Choose from: {', '.join(DEFAULT_CARBON_INTENSITY.keys())}"
     
-    # Robust server serial extraction with multiple patterns
     server_patterns = [
-        r'server\s+([A-Za-z0-9_-]+)',  # "server ABC123"
-        r'([A-Za-z0-9]{6,})',          # Direct alphanumeric codes like "SGH227WTNK"
-        r'([A-Za-z0-9_-]{5,})'         # Alphanumeric with underscores/hyphens
+        r'server\s+([A-Za-z0-9_-]+)',
+        r'([A-Za-z0-9]{6,})',
+        r'([A-Za-z0-9_-]{5,})'
     ]
-    
-    # Collect all potential server matches
     potential_servers = set()
     
-    # Try each pattern to find all server serials
     for pattern in server_patterns:
         matches = re.findall(pattern, query, re.IGNORECASE)
         for match in matches:
             potential_serial = match.upper().strip()
-            # Check if this serial exists in our data
             if potential_serial in processed_server_data:
                 potential_servers.add(potential_serial)
     
-    # Fallback: check if any known server serial appears directly in query
     query_upper = query.upper()
     for serial_key in processed_server_data.keys():
-        # Check for exact match or serial as substring with word boundaries
         if re.search(r'\b' + re.escape(serial_key) + r'\b', query_upper):
             potential_servers.add(serial_key)
     
-    # Additional fallback: fuzzy matching for common typos
     if not potential_servers:
-        # Split query into potential server tokens
         tokens = re.findall(r'[A-Za-z0-9]{5,}', query)
         for token in tokens:
             token_clean = re.sub(r'[^A-Za-z0-9]', '', token.upper())
             if len(token_clean) >= 5:
                 for serial_key in processed_server_data.keys():
                     serial_clean = re.sub(r'[^A-Za-z0-9]', '', serial_key)
-                    # Check if cleaned token matches cleaned serial
                     if token_clean == serial_clean:
                         potential_servers.add(serial_key)
                         break
     
     found_servers = list(potential_servers)
     
-    # If no servers found, return helpful error message
     if not found_servers:
         available_servers = list(processed_server_data.keys())
         sample_servers = ', '.join(available_servers[:5])
@@ -992,7 +1145,6 @@ def co2_emission_server(query: str) -> str:
                 f"Example usage: 'co2 emission for server {available_servers[0]}' or "
                 f"'{available_servers[0]} and {available_servers[1]} carbon footprint'")
     
-    # Calculate CO2 emissions for all found servers
     intensity_factor = DEFAULT_CARBON_INTENSITY[carbon_intensity]
     results = []
     total_co2 = 0.0
@@ -1009,23 +1161,19 @@ def co2_emission_server(query: str) -> str:
             })
             continue
         
-        # Calculate CO2 emissions
         co2_kg = energy_kwh * intensity_factor
         total_co2 += co2_kg
         servers_with_data += 1
         
-        # Get efficiency rating
         avg_cpu = server_data["avg_cpu_util"]
         
-        # Special case for 0% utilization
         if avg_cpu == 0:
             efficiency = "idle"
             efficiency_note = "Server is idle (0% CPU utilization)"
         else:
-            # Calculate power ratio only for active servers
             power_ratio = estimate_power(avg_cpu) / (50 + (300 - 50) * (avg_cpu/100))
             
-            efficiency = "poor"  # Default to poor
+            efficiency = "poor"
             for rating, threshold in EFFICIENCY_THRESHOLDS["cpu_power_ratio"].items():
                 if power_ratio <= threshold:
                     efficiency = rating
@@ -1041,9 +1189,7 @@ def co2_emission_server(query: str) -> str:
             "efficiency_note": efficiency_note
         })
     
-    # Format output based on number of servers
     if len(found_servers) == 1:
-        # Single server detailed output
         result = results[0]
         if "error" in result:
             return f"Server {result['serial']}: {result['error']}"
@@ -1056,7 +1202,6 @@ def co2_emission_server(query: str) -> str:
         output += f"   - {result['efficiency_note']}\n"
         
     else:
-        # Multiple servers output
         grid_type_display = carbon_intensity.replace('_', ' ').title()
         output = f"Carbon footprint analysis for {len(found_servers)} specified servers ({grid_type_display}):\n\n"
         
@@ -1079,42 +1224,24 @@ def co2_emission_server(query: str) -> str:
     return output
 
 def calculate_carbon_footprint_lowest(query: str) -> str:
-    """
-    Calculate carbon footprint for servers based on natural language query.
-    Can handle requests for specific servers or all servers with different grid types.
-    Shows LOWEST CO2 emitting servers by default.
-    
-    Args:
-        query: Natural language query that may contain:
-               - Server serial number (e.g. "server ABC123")
-               - Carbon intensity type (e.g. "low carbon", "average", "high carbon")
-               - Number of servers to show (e.g. "top 5", "show 15")
-    
-    Returns:
-        Formatted string with carbon footprint results (lowest emitters first)
-    """
     # Default values
     server_serial = None
     carbon_intensity = 'average_grid'
     num_servers_to_show = extract_server_count(query, default=10)
     
-    # Parse query for server serial
     query_lower = query.lower()
     if "server" in query_lower:
-        # Extract potential serial number after "server"
         parts = query_lower.split("server")
         if len(parts) > 1:
             potential_serial = parts[1].strip().upper()
             if potential_serial in processed_server_data:
                 server_serial = potential_serial
     
-    # Parse carbon intensity preference
     if "low carbon" in query_lower or "renewable" in query_lower:
         carbon_intensity = 'low_carbon_grid'
     elif "high carbon" in query_lower or "coal" in query_lower:
         carbon_intensity = 'high_carbon_grid'
     
-    # Validate carbon intensity input
     if carbon_intensity not in DEFAULT_CARBON_INTENSITY:
         return f"Invalid carbon intensity. Choose from: {', '.join(DEFAULT_CARBON_INTENSITY.keys())}"
     
@@ -1122,7 +1249,6 @@ def calculate_carbon_footprint_lowest(query: str) -> str:
     total_co2 = 0.0
     results = []
     
-    # Determine which servers to process
     servers_to_process = [server_serial] if server_serial else processed_server_data.keys()
     
     for serial in servers_to_process:
@@ -1132,25 +1258,20 @@ def calculate_carbon_footprint_lowest(query: str) -> str:
         server_data = processed_server_data[serial]
         energy_kwh = server_data.get("estimated_energy_kwh", 0)
         
-        # Skip servers with insufficient data
         if energy_kwh == 0:
             continue
         
-        # Calculate CO2 emissions
         co2_kg = energy_kwh * intensity_factor
         total_co2 += co2_kg
         
-        # Get efficiency rating
         avg_cpu = server_data["avg_cpu_util"]
         
-        # Special case for 0% utilization
         if avg_cpu == 0:
             efficiency = "idle"
         else:
-            # Calculate power ratio only for active servers
             power_ratio = estimate_power(avg_cpu) / (50 + (300 - 50) * (avg_cpu/100))
             
-            efficiency = "poor"  # Default to poor
+            efficiency = "poor"
             for rating, threshold in EFFICIENCY_THRESHOLDS["cpu_power_ratio"].items():
                 if power_ratio <= threshold:
                     efficiency = rating
@@ -1168,9 +1289,7 @@ def calculate_carbon_footprint_lowest(query: str) -> str:
     if not results:
         return "No valid server data available for carbon footprint calculation."
     
-    # Format the results
     if server_serial:
-        # Single server detailed output
         result = next((r for r in results if r["serial"] == server_serial), None)
         if not result:
             return f"No data available for server {server_serial}."
@@ -1189,7 +1308,6 @@ def calculate_carbon_footprint_lowest(query: str) -> str:
         return output
     
     else:
-        # Multiple servers summary output - LOWEST emitters
         grid_type_display = carbon_intensity.replace('_', ' ').title()
         available_servers = len(results)
         
@@ -1198,15 +1316,12 @@ def calculate_carbon_footprint_lowest(query: str) -> str:
         output += f"   - Average per Server: {round(total_co2/available_servers, 2)} kg\n\n"
         
         if num_servers_to_show == float('inf'):
-            # Show all servers
             top_count = available_servers
             output += f"All {available_servers} servers (lowest to highest emissions):\n\n"
         else:
-            # Show requested number of servers
             top_count = min(int(num_servers_to_show), available_servers)
             output += f"Top {top_count} LOWEST emitting servers:\n\n"
         
-        # Sort by LOWEST emissions (ascending order)
         sorted_results = sorted(results, key=lambda x: x["co2_kg"], reverse=False)
         
         for i, res in enumerate(sorted_results[:top_count]):
@@ -1216,7 +1331,6 @@ def calculate_carbon_footprint_lowest(query: str) -> str:
             output += f"   - CPU Utilization: {res['avg_cpu']}%\n"
             output += f"   - Efficiency Rating: {res['efficiency'].capitalize()}\n\n"
                 
-        # Add efficiency distribution
         eff_dist = {}
         for res in results:
             eff_dist[res["efficiency"]] = eff_dist.get(res["efficiency"], 0) + 1
@@ -1257,10 +1371,12 @@ def get_server_stats(query: str) -> str:
             result += f"  Lowest CPU: {lowest_cpu_rec['cpu_util']}% at {lowest_cpu_rec.get('time_str', 'N/A')}\n"
         if data.get('max_amb_temp') is not None:
             max_temp_rec = data.get("max_temp_record")
-            result += f"  Max Ambient Temp: {data['max_amb_temp']}°C at {max_temp_rec.get('time_str', 'N/A') if max_temp_rec else 'N/A'}\n"
+            result += f"  Max Ambient Temp: {data['max_amb_temp']}°C at {max_rec.get('time_str', 'N/A') if max_rec else 'N/A'}\n"
+        else: result += "  Maximum: N/A\n"
         if data.get('min_amb_temp') is not None:
             min_temp_rec = data.get("min_temp_record")
             result += f"  Min Ambient Temp: {data['min_amb_temp']}°C at {min_temp_rec.get('time_str', 'N/A') if min_temp_rec else 'N/A'}\n"
+        else: result += "  Minimum: N/A\n"
         if data.get('estimated_energy_kwh') is not None:
             result += f"  Total Estimated Energy: {data['estimated_energy_kwh']} kWh\n"
         if data.get('co2_emissions'):
@@ -1490,7 +1606,7 @@ def detect_anomalies(query: str) -> str:
         return matched if matched else ["cpu_util", "amb_temp", "cpu_watts", "dimm_watts"]
 
 
-    # Parse query to determine scope
+    
     analyze_all = True
     specific_server = None
     specific_metric = None
@@ -1503,15 +1619,11 @@ def detect_anomalies(query: str) -> str:
         specific_server = potential_serial
     elif re.search(r"\bserver\b", query.lower()):
         return f"⚠️ Server mentioned but not found in dataset. Please check the name."
-    # otherwise, proceed with analyze_all = True
-
-
+    
 
     
-    # Determine which metric to analyze
     metrics_to_check = extract_metrics(query)
     
-    # Check for multi-word metrics first
     if "cpu watts" in query_lower or "cpu_watts" in query_lower:
         metrics_to_check = ["cpu_watts"]
     elif "dimm watts" in query_lower or "dimm_watts" in query_lower:
@@ -1520,7 +1632,6 @@ def detect_anomalies(query: str) -> str:
         metrics_to_check = ["cpu_util"]
     elif "amb temp" in query_lower or "amb_temp" in query_lower:
         metrics_to_check = ["amb_temp"]
-    # Fallback to single-word matches
     elif "watts" in query_lower:
         metrics_to_check = ["cpu_watts", "dimm_watts"]
     elif "temp" in query_lower:
@@ -1532,7 +1643,6 @@ def detect_anomalies(query: str) -> str:
         metrics_to_check = ["cpu_util", "amb_temp", "cpu_watts", "dimm_watts"]
 
     
-    # Enhanced statistical anomaly detection
     def find_anomalies(values, timestamps, metric_name, server_serial):
         if not values or len(values) < 3:
             return [], None
@@ -1545,20 +1655,14 @@ def detect_anomalies(query: str) -> str:
         if mad == 0:
             return [], median
         
-        base_threshold = 3.5  # Lower base threshold
+        base_threshold = 3.5
         threshold = base_threshold
         
-        # More sensitive scaling
         if len(values) < 10:
-            threshold = 3.0  # Very sensitive for tiny datasets
+            threshold = 3.0
         elif len(values) > 100:
-            threshold = base_threshold + (len(values) / 500)  # Faster scaling
+            threshold = base_threshold + (len(values) / 500)
         
-        # Debug output (optional)
-        # print(f"Debug - {metric_name}: Median={median}, MAD={mad}, Threshold={threshold}")
-        # print(f"Values: {values}, Z-scores: {modified_z_scores}")
-        
-        # Find anomalies with deduplication
         anomalies = []
         seen = set()
         modified_z_scores = [0.6745 * (x - median) / mad for x in values]
@@ -1578,7 +1682,6 @@ def detect_anomalies(query: str) -> str:
         
         return anomalies, median
     
-    # Process requested servers
     servers_to_check = list(processed_server_data.keys()) if analyze_all else [specific_server]
     all_anomalies = []
     median_baselines = {}
@@ -1592,7 +1695,6 @@ def detect_anomalies(query: str) -> str:
         if not records:
             continue
             
-        # Check each requested metric
         for metric in metrics_to_check:
             values = []
             timestamps = []
@@ -1609,57 +1711,48 @@ def detect_anomalies(query: str) -> str:
                     median_baselines[metric] = median
                 all_anomalies.extend(metric_anomalies)
     
-    # Format results with enhanced information
     if not all_anomalies:
         if analyze_all:
             return "No significant anomalies detected across all servers and metrics."
         return f"No significant anomalies detected for server {specific_server}."
     
-    # Group by severity
     critical = [a for a in all_anomalies if abs(a["z_score"]) > 5]
     major = [a for a in all_anomalies if 3.5 < abs(a["z_score"]) <= 5]
     
-    # Temporal analysis
     anomaly_hours = [a['timestamp'].split(', ')[1][:2] for a in all_anomalies]
     hour_dist = Counter(anomaly_hours).most_common(3)
     
-    # Build enhanced output
     output = []
     if analyze_all:
         output.append(f"📊 Enhanced Anomaly Report for {len(servers_to_check)} servers")
     else:
         output.append(f"📊 Enhanced Anomaly Report for server {specific_server}")
     
-    # Baseline context
     output.append("\n🔍 Normal Ranges (median values):")
     for metric, median in median_baselines.items():
         output.append(f"- {metric}: {median}")
     
-    # Critical anomalies
     if critical:
         output.append("\n🚨 CRITICAL ANOMALIES (z-score > 5):")
-        for a in critical[:5]:  # Top 5 only
+        for a in critical[:5]:
             output.append(
                 f"- {a['server']} | {a['metric']} = {a['value']} "
                 f"(z-score: {a['z_score']}) at {a['timestamp']}"
             )
     
-    # Major anomalies
     if major:
         output.append("\n⚠️ MAJOR ANOMALIES (3.5 < z-score ≤ 5):")
-        for a in major[:5]:  # Top 5 only
+        for a in major[:5]:
             output.append(
                 f"- {a['server']} | {a['metric']} = {a['value']} "
                 f"(z-score: {a['z_score']}) at {a['timestamp']}"
             )
     
-    # Temporal patterns
     if hour_dist:
         output.append("\n⏰ Frequent Anomaly Times:")
         for hour, count in hour_dist:
             output.append(f"- {hour}:00 - {count} anomalies")
     
-    # Root cause suggestions
     output.append("\n🔧 Potential Investigation Paths:")
     if 'cpu_watts' in median_baselines:
         output.append("- CPU Power Spikes: Check workload scheduler and cooling")
@@ -1668,9 +1761,7 @@ def detect_anomalies(query: str) -> str:
     if 'dimm_watts' in median_baselines:
         output.append("- Memory Power: Run DIMM diagnostics")
     
-    # Summary
     total_anomalies = len(critical) + len(major)
     output.append(f"\n📈 Found {total_anomalies} significant anomalies (showing top 5 each)")
     
     return "\n".join(output)
-

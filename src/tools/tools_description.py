@@ -1,7 +1,25 @@
 from langchain.tools import Tool
-from src.tools.tool_function import list_servers, get_top_servers_by_cpu_util, get_specific_server_cpu_utilization, \
-    get_lowest_servers_by_cpu_util, get_top_servers_by_ambient_temp, get_specific_server_ambient_temp,get_lowest_servers_by_ambient_temp, get_top_servers_by_peak, get_specific_server_peak_data, \
-    get_lowest_servers_by_peak, get_server_stats, calculate_carbon_footprint, co2_emission_server, calculate_carbon_footprint_lowest, identify_high_cpu_servers, get_server_timestamps, get_filtered_server_records, detect_anomalies
+from src.tools.tool_function import (
+    list_servers,
+    get_top_servers_by_cpu_util,
+    get_specific_server_cpu_utilization,
+    get_lowest_servers_by_cpu_util,
+    get_top_servers_by_ambient_temp,
+    get_specific_server_ambient_temp,
+    get_lowest_servers_by_ambient_temp,
+    get_top_servers_by_peak,
+    get_specific_server_peak_data,
+    get_lowest_servers_by_peak,
+    get_server_stats,
+    calculate_carbon_footprint,
+    co2_emission_server,
+    calculate_carbon_footprint_lowest,
+    identify_high_cpu_servers,
+    get_server_timestamps,
+    get_filtered_server_records,
+    detect_anomalies,
+    generate_csv_report 
+)
 from src.tools.rag import query_documents, list_available_documents
 
 tools = [
@@ -19,7 +37,7 @@ tools = [
             "- Total records\n"
             "- Average CPU usage\n"
             "- Average ambient temperature\n\n"
-            "**Important Notes for Agent:** Upon receiving this list, you have sufficient information to answer the user's query directly. Present the summarized server list as your final answer without further tool calls for this request."
+            "**Important Notes for Agent:** Upon receiving this list, you have sufficient information to answer the user's query directly. Present the summarized server list as your final answer without further tool calls for this request. If the user asks for a 'full report' or 'PDF/Word' of this data, recommend using the `GenerateReport` tool."
         )
     ),
     Tool(
@@ -40,7 +58,7 @@ tools = [
             "- Power (Watts) at peak\n"
             "- Temperature (°C) at peak\n"
             "- Fan speed (RPM) at peak\n\n"
-            "**Important Notes for Agent:** Upon receiving this list, you have sufficient information to answer the user's query directly. Present the detailed server list as your final answer without further tool calls for this request. If the requested count exceeds available data, the tool will inform you."
+            "**Important Notes for Agent:** Upon receiving this list, you have sufficient information to answer the user's query directly. Present the detailed server list as your final answer without further tool calls for this request. If the requested count exceeds available data, the tool will inform you. If the user asks for a 'full report' or 'PDF/Word' of this data, recommend using the `GenerateReport` tool."
         )
     ),
     Tool(
@@ -71,7 +89,7 @@ tools = [
             "- Individual server breakdowns\n"
             "- Comparative analysis with rankings\n\n"
             "**Error Handling:** If server(s) are not found, returns a helpful error message with examples of available servers.\n\n"
-            "**Important Notes for Agent:** Upon receiving this data, you have sufficient information to answer the user's query directly. Present the detailed analysis as your final answer without further tool calls for this request."
+            "**Important Notes for Agent:** Upon receiving this data, you have sufficient information to answer the user's query directly. Present the detailed analysis as your final answer without further tool calls for this request. If the user asks for a 'full report' or 'PDF/Word' of this data, recommend using the `GenerateReport` tool."
         )
     ),
     Tool(
@@ -93,7 +111,7 @@ tools = [
             "- Power (Watts) at lowest CPU\n"
             "- Temperature (°C) at lowest CPU\n"
             "- Fan speed (RPM) at lowest CPU\n\n"
-            "**Important Notes for Agent:** Upon receiving this list, you have sufficient information to answer the user's query directly. Present the detailed server list as your final answer without further tool calls for this request. If the requested count exceeds available data, the tool will inform you."
+            "**Important Notes for Agent:** Upon receiving this list, you have sufficient information to answer the user's query directly. Present the detailed server list as your final answer without further tool calls for this request. If the requested count exceeds available data, the tool will inform you. If the user asks for a 'full report' or 'PDF/Word' of this data, recommend using the `GenerateReport` tool."
         )
     ),
     Tool(
@@ -116,7 +134,7 @@ tools = [
             "- CPU power consumption (Watts) at that time\n"
             "- DIMM power consumption (Watts) at that time\n\n"
             "**Error Handling:** Handles incomplete data gracefully and informs if the requested count exceeds available data.\n\n"
-            "**Important Notes for Agent:** Upon receiving this list, you have sufficient information to answer the user's query directly. Present the detailed server list as your final answer without further tool calls for this request."
+            "**Important Notes for Agent:** Upon receiving this list, you have sufficient information to answer the user's query directly. Present the detailed server list as your final answer without further tool calls for this request. If the user asks for a 'full report' or 'PDF/Word' of this data, recommend using the `GenerateReport` tool."
         )
     ),
     Tool(
@@ -141,7 +159,7 @@ tools = [
             "- DIMM power consumption (Watts) at peak\n\n"
             "**Error Handling:** Handles multiple servers with summary statistics and gracefully handles missing data. "
             "Uses the same robust server identification patterns as the CO2 emission function.\n\n"
-            "**Important Notes for Agent:** Upon receiving this data, you have sufficient information to answer the user's query directly. Present the detailed analysis as your final answer without further tool calls for this request."
+            "**Important Notes for Agent:** Upon receiving this data, you have sufficient information to answer the user's query directly. Present the detailed analysis as your final answer without further tool calls for this request. If the user asks for a 'full report' or 'PDF/Word' of this data, recommend using the `GenerateReport` tool."
         )
     ),
     Tool(
@@ -164,7 +182,7 @@ tools = [
             "- CPU power consumption (Watts) at that time\n"
             "- DIMM power consumption (Watts) at that time\n\n"
             "**Error Handling:** Handles incomplete data gracefully and informs if the requested count exceeds available data.\n\n"
-            "**Important Notes for Agent:** Upon receiving this list, you have sufficient information to answer the user's query directly. Present the detailed server list as your final answer without further tool calls for this request."
+            "**Important Notes for Agent:** Upon receiving this list, you have sufficient information to answer the user's query directly. Present the detailed server list as your final answer without further tool calls for this request. If the user asks for a 'full report' or 'PDF/Word' of this data, recommend using the `GenerateReport` tool."
         )
     ),
     Tool(
@@ -185,7 +203,7 @@ tools = [
             "- CPU Utilization (%) at peak\n"
             "- Ambient Temperature (°C) at peak\n"
             "- CPU Power (Watts) at peak\n\n"
-            "**Important Notes for Agent:** Upon receiving this list, you have sufficient information to answer the user's query directly. Present the detailed server list as your final answer without further tool calls for this request. If the requested count exceeds available data, the tool will inform you."
+            "**Important Notes for Agent:** Upon receiving this list, you have sufficient information to answer the user's query directly. Present the detailed server list as your final answer without further tool calls for this request. If the user asks for a 'full report' or 'PDF/Word' of this data, recommend using the `GenerateReport` tool."
         )
     ),
     Tool(
@@ -211,7 +229,7 @@ tools = [
             "- CPU power consumption (Watts) at peak\n\n"
             "**Error Handling:** Handles multiple servers with summary statistics and gracefully handles missing data. "
             "Uses the same robust server identification patterns as other specific server functions.\n\n"
-            "**Important Notes for Agent:** Upon receiving this data, you have sufficient information to answer the user's query directly. Present the detailed analysis as your final answer without further tool calls for this request."
+            "**Important Notes for Agent:** Upon receiving this data, you have sufficient information to answer the user's query directly. Present the detailed analysis as your final answer without further tool calls for this request. If the user asks for a 'full report' or 'PDF/Word' of this data, recommend using the `GenerateReport` tool."
         )
     ),
     Tool(
@@ -232,7 +250,7 @@ tools = [
             "- CPU Utilization (%) at lowest peak\n"
             "- Ambient Temperature (°C) at lowest peak\n"
             "- CPU Power (Watts) at lowest peak\n\n"
-            "**Important Notes for Agent:** Upon receiving this list, you have sufficient information to answer the user's query directly. Present the detailed server list as your final answer without further tool calls for this request. If the requested count exceeds available data, the tool will inform you."
+            "**Important Notes for Agent:** Upon receiving this list, you have sufficient information to answer the user's query directly. Present the detailed server list as your final answer without further tool calls for this request. If the user asks for a 'full report' or 'PDF/Word' of this data, recommend using the `GenerateReport` tool."
         )
     ),
     Tool(
@@ -262,7 +280,7 @@ tools = [
             "- 'Show stats for server TDX-901'\n"
             "- 'Fleet summary'\n"
             "- 'Give observation for server XP100'\n\n"
-            "**Important Notes for Agent:** Upon receiving this data, you have sufficient information to answer the user's query directly. Present the detailed statistics or summary as your final answer without further tool calls for this request."
+            "**Important Notes for Agent:** Upon receiving this data, you have sufficient information to answer the user's query directly. Present the detailed statistics or summary as your final answer without further tool calls for this request. If the user asks for a 'full report' or 'PDF/Word' of this data, recommend using the `GenerateReport` tool."
         )
     ),
     Tool(
@@ -284,7 +302,7 @@ tools = [
             "- Average emissions per server\n"
             "- Top N highest emitting servers with details\n"
             "- Energy efficiency distribution\n\n"
-            "**Important Notes for Agent:** Upon receiving this report, you have sufficient information to answer the user's query directly. Present the detailed carbon footprint analysis as your final answer without further tool calls for this request."
+            "**Important Notes for Agent:** Upon receiving this report, you have sufficient information to answer the user's query directly. Present the detailed carbon footprint analysis as your final answer without further tool calls for this request. If the user asks for a 'full report' or 'PDF/Word' of this data, recommend using the `GenerateReport` tool."
         )
     ),
     Tool(
@@ -313,7 +331,7 @@ tools = [
             "- Individual server breakdowns\n"
             "- Comparative analysis\n\n"
             "**Error Handling:** If server(s) are not found, returns a helpful error message with examples of available servers.\n\n"
-            "**Important Notes for Agent:** Upon receiving this data, you have sufficient information to answer the user's query directly. Present the detailed carbon footprint analysis as your final answer without further tool calls for this request."
+            "**Important Notes for Agent:** Upon receiving this data, you have sufficient information to answer the user's query directly. Present the detailed carbon footprint analysis as your final answer without further tool calls for this request. If the user asks for a 'full report' or 'PDF/Word' of this data, recommend using the `GenerateReport` tool."
         )
     ),
     Tool(
@@ -337,7 +355,7 @@ tools = [
             "- Average CPU Utilization (%)\n"
             "- Efficiency Rating (based on CPU-to-power ratio)\n"
             "Also returns a fleet summary when multiple servers are included, with efficiency distribution.\n\n"
-            "**Important Notes for Agent:** Upon receiving this report, you have sufficient information to answer the user's query directly. Present the detailed carbon footprint analysis as your final answer without further tool calls for this request."
+            "**Important Notes for Agent:** Upon receiving this report, you have sufficient information to answer the user's query directly. Present the detailed carbon footprint analysis as your final answer without further tool calls for this request. If the user asks for a 'full report' or 'PDF/Word' of this data, recommend using the `GenerateReport` tool."
         )
     ),
     Tool(
@@ -358,7 +376,7 @@ tools = [
             "**Notes:**\n"
             "- Maximum 20 servers are shown in detail; remaining are summarized.\n"
             "- Results are sorted by percentage of high CPU records and peak CPU observed.\n\n"
-            "**Important Notes for Agent:** Upon receiving this report, you have sufficient information to answer the user's query directly. Present the detailed server list as your final answer without further tool calls for this request."
+            "**Important Notes for Agent:** Upon receiving this report, you have sufficient information to answer the user's query directly. Present the detailed server list as your final answer without further tool calls for this request. If the user asks for a 'full report' or 'PDF/Word' of this data, recommend using the `GenerateReport` tool."
         )
     ),
     Tool(
@@ -378,7 +396,7 @@ tools = [
             "**Notes:**\n"
             "- The tool attempts to match server serials even with partial or imprecise queries.\n"
             "- If no match is found, it will suggest a few available server serials.\n\n"
-            "**Important Notes for Agent:** Upon receiving this data, you have sufficient information to answer the user's query directly. Present the detailed timestamp information as your final answer without further tool calls for this request."
+            "**Important Notes for Agent:** Upon receiving this data, you have sufficient information to answer the user's query directly. Present the detailed timestamp information as your final answer without further tool calls for this request. If the user asks for a 'full report' or 'PDF/Word' of this data, recommend using the `GenerateReport` tool."
         )
     ),
     Tool(
@@ -406,7 +424,7 @@ tools = [
             "- Ensure all fields are correctly specified in double-quoted JSON.\n"
             "- Server serial is case-insensitive.\n"
             "- Returns an error message if fields are missing or invalid.\n\n"
-            "**Important Notes for Agent:** Upon receiving this data, you have sufficient information to answer the user's query directly. Present the filtered records as your final answer without further tool calls for this request."
+            "**Important Notes for Agent:** Upon receiving this data, you have sufficient information to answer the user's query directly. Present the filtered records as your final answer without further tool calls for this request. If the user asks for a 'full report' or 'PDF/Word' of this data, recommend using the `GenerateReport` tool."
         )
     ),
     Tool(
@@ -437,7 +455,7 @@ tools = [
             "- The function works with historical records stored for each server.\n"
             "- If no significant anomalies are detected, a clean report is returned.\n"
             "- Supports natural language input only.\n"
-            "**- Upon receiving the anomaly report from this tool, you have sufficient information to answer the user's query directly. Present the detailed report as your final answer without further tool calls for this request.**"
+            "**- Upon receiving the anomaly report from this tool, you have sufficient information to answer the user's query directly. Present the detailed report as your final answer without further tool calls for this request. If the user asks for a 'full report' or 'PDF/Word' of this data, recommend using the `GenerateReport` tool.**"
         )
     ),
     Tool(
@@ -483,5 +501,20 @@ tools = [
             "- HPE Hardware Optimization Manuals\n\n"
             "**Important Notes for Agent:** Upon receiving this list, you have sufficient information to answer the user's query directly. Present the list of available documents as your final answer without further tool calls for this request."
         )
+    ),
+
+    Tool(
+    name="GenerateReport",
+    func=generate_csv_report,
+    description=(
+        "**Purpose:** Generate a downloadable CSV report for server data based on a natural language query.\n\n"
+        "**Triggers:** Use this tool when the user asks for a 'CSV report', 'export to Excel', 'generate report', 'download data', etc.\n\n"
+        "**Input:** Natural language query such as:\n"
+        "- 'all servers'\n"
+        "- 'top 5 cpu servers'\n"
+        "- 'servers with cpu above 75%'\n\n"
+        "**Returns:** File path of the generated `.csv` file (e.g., `temp_reports/server_report_abc.csv`).\n"
+        "Final answer should include: 'Your detailed CSV report is ready! You can download it here: [file_path]'"
     )
+)
 ]
