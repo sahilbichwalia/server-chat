@@ -1,9 +1,9 @@
 from src.data_processing.loader import load_data
 from . import initialize_data
 from src.config.logging_config import setup_logging
-from src.common.common import DEFAULT_CARBON_INTENSITY,BASE_POWER, MAX_POWER
+from src.common.common import DEFAULT_CARBON_INTENSITY, BASE_POWER, MAX_POWER
 from datetime import datetime
-from typing import Dict
+from typing import Dict, List, Any
 
 logger = setup_logging()
 
@@ -12,12 +12,18 @@ def estimate_power(cpu_util: float) -> float:
     max_power = MAX_POWER
     return base_power + ((max_power - base_power) * cpu_util / 100.0)
 
-server_data_raw = initialize_data()
-# -----------------------------
-# Data Processing Functions
-# -----------------------------
-def process_server_data() -> dict[str, dict]: # Replaced typing.Dict with dict
+def get_fresh_server_data() -> List[Dict[str, Any]]:
+    """Fetch the latest server data from MongoDB (or fallback to JSON)."""
+    try:
+        return load_data(source_type="mongodb")
+    except Exception as e:
+        logger.warning(f"Failed to load from MongoDB, falling back to JSON: {e}")
+        return load_data(source_type="json")
+
+def process_server_data(server_data_raw=None) -> dict[str, dict]:
     processed_data = {}
+    if server_data_raw is None:
+        server_data_raw = get_fresh_server_data()
     if not server_data_raw:
         logger.warning("No raw server data to process.")
         return processed_data
@@ -55,7 +61,6 @@ def process_server_data() -> dict[str, dict]: # Replaced typing.Dict with dict
         valid_entries_for_sorting.sort(key=lambda x: x[0])
         sorted_power_data_entries = [item[1] for item in valid_entries_for_sorting]
 
-
         for idx, entry in enumerate(sorted_power_data_entries):
             try:
                 timestamp_str = entry.get("time", "")
@@ -70,11 +75,11 @@ def process_server_data() -> dict[str, dict]: # Replaced typing.Dict with dict
                     est_power_val = estimate_power(float(cpu_util))
                     estimated_powers.append(est_power_val)
 
-                if idx > 0 and est_power_val is not None and timestamps: # Check est_power_val is not None
+                if idx > 0 and est_power_val is not None and timestamps:
                     prev_time = timestamps[-1]
                     delta_hours = (timestamp - prev_time).total_seconds() / 3600.0
                     if delta_hours > 0:
-                         estimated_energy_kwh += (est_power_val * delta_hours) / 1000.0 # est_power_val is in Watts, so this is Wh. Division by 1000 makes it kWh.
+                        estimated_energy_kwh += (est_power_val * delta_hours) / 1000.0
 
                 if isinstance(cpu_util, (int, float)):
                     cpu_utils.append(float(cpu_util))
@@ -111,7 +116,6 @@ def process_server_data() -> dict[str, dict]: # Replaced typing.Dict with dict
         lowest_cpu_record = next((r for r in records if r["cpu_util"] == lowest_cpu_util_val), None) if lowest_cpu_util_val is not None else None
 
         avg_est_power = round(sum(estimated_powers) / len(estimated_powers), 2) if estimated_powers else None
-
 
         max_amb_temp = max(temps) if temps else None
         max_temp_record = next((r for r in records if r["amb_temp"] == max_amb_temp), None) if max_amb_temp is not None else None
@@ -154,36 +158,25 @@ def process_server_data() -> dict[str, dict]: # Replaced typing.Dict with dict
     logger.info(f"Successfully processed data for {len(processed_data)} servers")
     return processed_data
 
-processed_server_data = process_server_data()
-
-server_rankings = {
-    "top_cpu": sorted(
-        [(k, v["peak_cpu_util"]) for k, v in processed_server_data.items() if v.get("peak_cpu_util") is not None],
-        key=lambda x: x[1],
-        reverse=True
-    ),
-    "bottom_cpu": sorted(
-        [(k, v["lowest_cpu_util"]) for k, v in processed_server_data.items() if v.get("lowest_cpu_util") is not None],
-        key=lambda x: x[1]
-    ),
-    "top_amb_temp": sorted(
-        [(k, v["max_amb_temp"]) for k, v in processed_server_data.items() if v.get("max_amb_temp") is not None],
-        key=lambda x: x[1],
-        reverse=True
-    ),
-    "bottom_amb_temp": sorted(
-        [(k, v["min_amb_temp"]) for k, v in processed_server_data.items() if v.get("min_amb_temp") is not None],
-        key=lambda x: x[1]
-    ),
-    "top_peak": sorted(
-        [(k, v["max_peak"]) for k, v in processed_server_data.items() if v.get("max_peak") is not None],
-        key=lambda x: x[1],
-        reverse=True
-    ),
-    "bottom_peak": sorted(
-        [(k, v["min_peak"]) for k, v in processed_server_data.items() if v.get("min_peak") is not None],
-        key=lambda x: x[1]
-    )
-}
-
-logger.info("Server rankings initialized.")
+def get_server_rankings(processed_data: dict) -> dict:
+    """Compute rankings for servers based on processed data."""
+    rankings = {
+        "top_cpu": sorted(
+            [(k, v["peak_cpu_util"]) for k, v in processed_data.items() if v.get("peak_cpu_util") is not None],
+            key=lambda x: x[1], reverse=True
+        ),
+        "bottom_cpu": sorted(
+            [(k, v["lowest_cpu_util"]) for k, v in processed_data.items() if v.get("lowest_cpu_util") is not None],
+            key=lambda x: x[1]
+        ),
+        "top_amb_temp": sorted(
+            [(k, v["max_amb_temp"]) for k, v in processed_data.items() if v.get("max_amb_temp") is not None],
+            key=lambda x: x[1], reverse=True
+        ),
+        "bottom_amb_temp": sorted(
+            [(k, v["min_amb_temp"]) for k, v in processed_data.items() if v.get("min_amb_temp") is not None],
+            key=lambda x: x[1]
+        ),
+        # Add more rankings as needed
+    }
+    return rankings

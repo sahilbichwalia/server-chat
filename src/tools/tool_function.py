@@ -14,7 +14,12 @@ from word2number import w2n
 from collections import Counter
 
 # Assuming these are available globally from data_preprocessing
-from src.data_processing.data_preprocessing import processed_server_data, server_rankings, estimate_power
+from src.data_processing.data_preprocessing import (
+    get_fresh_server_data,
+    process_server_data,
+    get_server_rankings,
+    estimate_power,
+)
 from src.common.common import EFFICIENCY_THRESHOLDS, DEFAULT_CARBON_INTENSITY
 from src.config.logging_config import setup_logging
 
@@ -28,6 +33,7 @@ logger = setup_logging()
 
 def _get_all_servers_data_structured() -> List[dict]:
     """Returns all server data in a structured (list of dicts) format for reports."""
+    processed_server_data, _ = get_processed_data_and_rankings()
     all_data = []
     if not processed_server_data:
         return []
@@ -58,6 +64,7 @@ def _get_all_servers_data_structured() -> List[dict]:
 
 def _get_top_n_cpu_servers_structured(n: int) -> List[dict]:
     """Returns top N CPU servers in structured format."""
+    processed_server_data, server_rankings = get_processed_data_and_rankings()
     if not server_rankings.get("top_cpu") or not processed_server_data:
         return []
 
@@ -82,6 +89,7 @@ def _get_top_n_cpu_servers_structured(n: int) -> List[dict]:
 
 def _get_high_cpu_servers_structured(threshold: float) -> List[dict]:
     """Returns servers with CPU above threshold in structured format."""
+    processed_server_data, _ = get_processed_data_and_rankings()
     if not processed_server_data:
         return []
 
@@ -187,7 +195,7 @@ def _get_anomaly_data_structured(query: str) -> List[dict]:
     analyze_all = True
     specific_server = None
     query_lower = query.lower()
-    
+    processed_server_data, _ = get_processed_data_and_rankings()
     potential_serial = extract_server_name(query, set(processed_server_data.keys()))
     if potential_serial:
         analyze_all = False
@@ -224,6 +232,7 @@ def _get_anomaly_data_structured(query: str) -> List[dict]:
 
 
 def _get_carbon_footprint_data_structured(query: str) -> List[dict]:
+    processed_server_data, _ = get_processed_data_and_rankings()
     """
     Returns structured carbon footprint data based on query (all, top N, lowest N, specific).
     """
@@ -347,6 +356,7 @@ def generate_csv_report(report_query: str) -> str:
     
 
 def list_servers(_: str) -> str:
+    processed_server_data, _ = get_processed_data_and_rankings()
     if not processed_server_data:
         return "Error: No server data available."
     serials = list(processed_server_data.keys())
@@ -405,6 +415,7 @@ def extract_server_count(text: str, default: int = 10) -> float:
     return float(default)
 
 def get_top_servers_by_cpu_util(query: str = "") -> str:
+    processed_server_data, server_rankings = get_processed_data_and_rankings()
     if not server_rankings.get("top_cpu"):
         return "No CPU utilization data available for ranking top servers."
     num_servers_float = extract_server_count(query)
@@ -438,6 +449,7 @@ def get_top_servers_by_cpu_util(query: str = "") -> str:
     return result
 
 def get_specific_server_cpu_utilization(query: str) -> str:
+    processed_server_data, server_rankings = get_processed_data_and_rankings()
     if not processed_server_data:
         return "No server data available."
     
@@ -589,6 +601,7 @@ def get_specific_server_cpu_utilization(query: str) -> str:
     return output
 
 def get_lowest_servers_by_cpu_util(query: str = "") -> str:
+    processed_server_data, server_rankings = get_processed_data_and_rankings()
     if not server_rankings.get("bottom_cpu"):
         return "No CPU utilization data available for ranking lowest servers."
     num_servers_float = extract_server_count(query)
@@ -622,6 +635,7 @@ def get_lowest_servers_by_cpu_util(query: str = "") -> str:
     return result
 
 def get_top_servers_by_ambient_temp(query: str = "") -> str:
+    processed_server_data, server_rankings = get_processed_data_and_rankings()
     if not server_rankings.get("top_amb_temp"):
         return "No ambient temperature data available for ranking top servers."
     num_servers_float = extract_server_count(query)
@@ -655,6 +669,7 @@ def get_top_servers_by_ambient_temp(query: str = "") -> str:
     return result
 
 def get_specific_server_ambient_temp(query: str) -> str:
+    processed_server_data, server_rankings = get_processed_data_and_rankings()
     if not processed_server_data:
         return "No server data available."
     
@@ -777,6 +792,7 @@ def get_specific_server_ambient_temp(query: str) -> str:
     return output
 
 def get_lowest_servers_by_ambient_temp(query: str = "") -> str:
+    processed_server_data, server_rankings = get_processed_data_and_rankings()
     if not server_rankings.get("bottom_amb_temp"):
         return "No ambient temperature data available for ranking lowest servers."
     num_servers_float = extract_server_count(query)
@@ -810,6 +826,7 @@ def get_lowest_servers_by_ambient_temp(query: str = "") -> str:
     return result
 
 def get_top_servers_by_peak(query: str = "") -> str:
+    processed_server_data, server_rankings = get_processed_data_and_rankings()
     if not server_rankings.get("top_peak"):
         return "No peak data available for ranking top servers."
     num_servers_float = extract_server_count(query)
@@ -843,6 +860,7 @@ def get_top_servers_by_peak(query: str = "") -> str:
     return result
 
 def get_specific_server_peak_data(query: str) -> str:
+    processed_server_data, server_rankings = get_processed_data_and_rankings()
     if not processed_server_data:
         return "No server data available."
     
@@ -965,6 +983,7 @@ def get_specific_server_peak_data(query: str) -> str:
     return output
 
 def get_lowest_servers_by_peak(query: str = "") -> str:
+    processed_server_data, server_rankings = get_processed_data_and_rankings()
     if not server_rankings.get("bottom_peak"):
         return "No peak data available for ranking lowest servers."
     num_servers_float = extract_server_count(query)
@@ -998,6 +1017,7 @@ def get_lowest_servers_by_peak(query: str = "") -> str:
     return result
 
 def calculate_carbon_footprint(query: str) -> str:
+    processed_server_data, server_rankings = get_processed_data_and_rankings()
     if not processed_server_data:
         return "No server data available."
     
@@ -1087,6 +1107,7 @@ def calculate_carbon_footprint(query: str) -> str:
     return output
 
 def co2_emission_server(query: str) -> str:
+    processed_server_data, server_rankings = get_processed_data_and_rankings()
     if not processed_server_data:
         return "No server data available."
     
@@ -1228,7 +1249,7 @@ def calculate_carbon_footprint_lowest(query: str) -> str:
     server_serial = None
     carbon_intensity = 'average_grid'
     num_servers_to_show = extract_server_count(query, default=10)
-    
+    processed_server_data, _ = get_processed_data_and_rankings()
     query_lower = query.lower()
     if "server" in query_lower:
         parts = query_lower.split("server")
@@ -1342,7 +1363,14 @@ def calculate_carbon_footprint_lowest(query: str) -> str:
     
     return output
 
+def get_processed_data_and_rankings():
+    raw_data = get_fresh_server_data()
+    processed_data = process_server_data(raw_data)
+    rankings = get_server_rankings(processed_data)
+    return processed_data, rankings
+
 def get_server_stats(query: str) -> str:
+    processed_server_data, _ = get_processed_data_and_rankings()
     specific_server_serial = None
     match = re.search(r"server\s+([A-Z0-9-]+)", query, re.IGNORECASE)
     if match:
@@ -1371,7 +1399,7 @@ def get_server_stats(query: str) -> str:
             result += f"  Lowest CPU: {lowest_cpu_rec['cpu_util']}% at {lowest_cpu_rec.get('time_str', 'N/A')}\n"
         if data.get('max_amb_temp') is not None:
             max_temp_rec = data.get("max_temp_record")
-            result += f"  Max Ambient Temp: {data['max_amb_temp']}°C at {max_rec.get('time_str', 'N/A') if max_rec else 'N/A'}\n"
+            result += f"  Max Ambient Temp: {data['max_amb_temp']}°C at {max_temp_rec.get('time_str', 'N/A') if max_temp_rec else 'N/A'}\n"
         else: result += "  Maximum: N/A\n"
         if data.get('min_amb_temp') is not None:
             min_temp_rec = data.get("min_temp_record")
@@ -1384,6 +1412,7 @@ def get_server_stats(query: str) -> str:
         return result.strip()
     result = "Server Fleet Statistics Summary (Top 10 by Peak CPU shown):\n" + "=" * 50 + "\n\n"
     if not processed_server_data: return "No server data available for summary."
+    processed_server_data, server_rankings = get_processed_data_and_rankings()
     servers_to_show = server_rankings.get("top_cpu", [])[:10]
     if not servers_to_show:
         result += "No ranked servers to display in summary.\n"
@@ -1409,6 +1438,7 @@ def get_server_stats(query: str) -> str:
     return result
 
 def get_server_timestamps(query: str) -> str:
+    processed_server_data, _ = get_processed_data_and_rankings()
     if not processed_server_data: return "No server data available."
     server_patterns = [r'server\s+([A-Za-z0-9_-]+)', r'([A-Za-z0-9_-]{5,})']
     server_serial = None
@@ -1442,6 +1472,7 @@ def get_server_timestamps(query: str) -> str:
     return result
 
 def identify_high_cpu_servers(query: str) -> str:
+    processed_server_data, _ = get_processed_data_and_rankings()
     if not processed_server_data: return "No server data available."
     match = re.search(r'(\d+(\.\d+)?)', query)
     if not match: return "Please specify a CPU threshold (e.g., 'CPU above 80%')"
@@ -1478,6 +1509,7 @@ def identify_high_cpu_servers(query: str) -> str:
     return result
 
 def get_ambient_temp_stats(query: str) -> str:
+    processed_server_data, server_rankings = get_processed_data_and_rankings()
     if not processed_server_data: return "Error: No server data for ambient temp stats."
     query_lower = query.lower()
     serial_match = re.search(r"server\s+([A-Z0-9-]+)", query_lower, re.IGNORECASE)
@@ -1532,6 +1564,7 @@ def get_ambient_temp_stats(query: str) -> str:
 
 
 def get_filtered_server_records(query_params_str: str) -> str:
+    processed_server_data, _ = get_processed_data_and_rankings()
     try:
         params = json.loads(query_params_str)
         server_serial, metric_key, operator, value = params.get("server_serial"), params.get("metric"), params.get("operator"), params.get("value")
@@ -1612,7 +1645,7 @@ def detect_anomalies(query: str) -> str:
     specific_metric = None
 
     query_lower = query.lower()
-    
+    processed_server_data, _ = get_processed_data_and_rankings()
     potential_serial = extract_server_name(query, set(processed_server_data.keys()))
     if potential_serial:
         analyze_all = False
