@@ -20,6 +20,8 @@ from src.tools.tool_function import (
     detect_anomalies,
     generate_csv_report 
 )
+from src.tools.prediction import predict_server_metrics_tool
+
 from src.tools.rag import query_documents, list_available_documents
 
 tools = [
@@ -516,5 +518,23 @@ tools = [
         "**Returns:** File path of the generated `.csv` file (e.g., `temp_reports/server_report_abc.csv`).\n"
         "Final answer should include: 'Your detailed CSV report is ready! You can download it here: [file_path]'"
     )
+),
+Tool(
+    name="ServerMetricsPredictor",
+    func=predict_server_metrics_tool,
+    description=(
+        "Predict server metrics (CPU utilization, ambient temperature, power consumption) for future dates. "
+        "Uses Prophet machine learning models trained on historical server data. "
+        "Input should be a natural language query containing:\n"
+        "- Server serial number (e.g., '2M270600W3')\n"
+        "- Target date (e.g., 'March 27, 2028', 'tomorrow', '2028-03-27')\n"
+        "- Optional: specific metrics (CPU utilization, ambient temperature, peak power, etc.)\n\n"
+        "Examples:\n"
+        "- 'CPU utilization for server 2M270600W3 on March 27, 2028'\n"
+        "- 'Ambient temperature for server ABC123 tomorrow'\n"
+        "- 'What will be the peak power for server XYZ789 next week?'\n"
+        "- 'Predict all metrics for server 2M270600W3 on 2028-12-25'"
+    ),
+    return_direct=True
 )
 ]

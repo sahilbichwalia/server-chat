@@ -1,5 +1,5 @@
 from src.data_processing.loader import load_data
-from . import initialize_data
+
 from src.config.logging_config import setup_logging
 from src.common.common import DEFAULT_CARBON_INTENSITY, BASE_POWER, MAX_POWER
 from datetime import datetime
@@ -157,6 +157,8 @@ def process_server_data(server_data_raw=None) -> dict[str, dict]:
 
     logger.info(f"Successfully processed data for {len(processed_data)} servers")
     return processed_data
+
+processed_server_data = process_server_data()
 
 def get_server_rankings(processed_data: dict) -> dict:
     """Compute rankings for servers based on processed data."""
