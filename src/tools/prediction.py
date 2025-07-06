@@ -3,16 +3,10 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 import pandas as pd
 from prophet import Prophet
-<<<<<<< HEAD
 from src.data_processing.loader import load_data
 from src.config.logging_config import setup_logging
 logger = setup_logging()
 server_data_raw = load_data(source_type="mongodb")
-=======
-from src.data_processing.loader import server_data_raw
-from src.config.logging_config import setup_logging
-logger = setup_logging()
->>>>>>> 7a8e06c956366eb55b41c0ff2eb97ff83e15207b
 
 class ServerMetricsPredictor:
     """
@@ -29,21 +23,12 @@ class ServerMetricsPredictor:
         # Define realistic bounds for each metric
         # Note: cpu_util can exceed 100% for multi-core systems (e.g., 800% = 8 cores at 100%)
         self.metric_bounds = {
-<<<<<<< HEAD
-            'cpu_util': {'min': 0, 'max': 100, 'unit': '%', 'description': 'Multi-core CPU utilization'},
-            'amb_temp': {'min': -40, 'max': 100, 'unit': '°C', 'description': 'Ambient temperature'},
-            'peak': {'min': 0, 'max': 100, 'unit': 'W', 'description': 'Peak power consumption'},
-            'cpu_watts': {'min': 0, 'max': 100, 'unit': 'W', 'description': 'CPU power consumption'},
-            'average': {'min': 0, 'max': 100, 'unit': 'W', 'description': 'Average power consumption'},
-            'minimum': {'min': 0, 'max': 100, 'unit': 'W', 'description': 'Minimum power consumption'}
-=======
             'cpu_util': {'min': 0, 'max': 1600, 'unit': '%', 'description': 'Multi-core CPU utilization'},
             'amb_temp': {'min': -40, 'max': 80, 'unit': '°C', 'description': 'Ambient temperature'},
             'peak': {'min': 0, 'max': 2000, 'unit': 'W', 'description': 'Peak power consumption'},
             'cpu_watts': {'min': 0, 'max': 500, 'unit': 'W', 'description': 'CPU power consumption'},
             'average': {'min': 0, 'max': 1500, 'unit': 'W', 'description': 'Average power consumption'},
             'minimum': {'min': 0, 'max': 1000, 'unit': 'W', 'description': 'Minimum power consumption'}
->>>>>>> 7a8e06c956366eb55b41c0ff2eb97ff83e15207b
         }
         
     def _parse_datetime(self, time_str: str) -> Optional[datetime]:
