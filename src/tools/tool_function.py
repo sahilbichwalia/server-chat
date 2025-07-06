@@ -1,6 +1,7 @@
 import pandas as pd
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from src.data_processing.data_preprocessing import processed_server_data,estimate_power
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 from reportlab.lib.units import inch
@@ -1798,3 +1799,6 @@ def detect_anomalies(query: str) -> str:
     output.append(f"\n📈 Found {total_anomalies} significant anomalies (showing top 5 each)")
     
     return "\n".join(output)
+
+
+
