@@ -23,6 +23,8 @@ from src.tools.tool_function import (
 from src.tools.prediction import predict_server_metrics_tool
 
 from src.tools.rag import query_documents, list_available_documents
+from src.tools.prediction import predict_server_metrics_tool
+from src.tools.tool_function import identify_low_cpu_servers
 
 tools = [
     Tool(
@@ -500,6 +502,7 @@ tools = [
             "- HPE Data Center Sustainability Best Practices\n"
             "- HPE-Specific Tool Integration Guides (iLO, OneView, InfoSight)\n"
             "- Compliance and Certification Documentation\n"
+<<<<<<< HEAD
             "- HPE Hardware Optimization Manuals\n\n"
             "**Important Notes for Agent:** Upon receiving this list, you have sufficient information to answer the user's query directly. Present the list of available documents as your final answer without further tool calls for this request."
         )
@@ -520,6 +523,15 @@ tools = [
     )
 ),
 Tool(
+=======
+            "- HPE Hardware Optimization Manuals\n"
+            "Input should be an empty string or 'list'. "
+            "Example usage: Action: ListAvailableDocuments[]"
+        ),
+        return_direct=True
+    ),
+     Tool(
+>>>>>>> 7a8e06c956366eb55b41c0ff2eb97ff83e15207b
     name="ServerMetricsPredictor",
     func=predict_server_metrics_tool,
     description=(
@@ -536,5 +548,35 @@ Tool(
         "- 'Predict all metrics for server 2M270600W3 on 2028-12-25'"
     ),
     return_direct=True
+<<<<<<< HEAD
 )
 ]
+=======
+),
+Tool(
+    name="IdentifyLowCpuServers", 
+    func=identify_low_cpu_servers,
+    description=(
+        "Use this tool to find servers with CPU usage below a specified threshold. "
+        "The query must contain a numeric threshold value (e.g., 'CPU below 20%', 'underutilized servers under 10').\n\n"
+        "Example inputs:\n"
+        "- 'Show servers with CPU below 15%'\n"
+        "- 'Find underutilized servers under 25%'\n"
+        "- 'Which servers have low CPU usage below 30%?'\n\n"
+        "Returns:\n"
+        "- List of servers sorted by prevalence of low CPU usage and minimum CPU observed\n"
+        "- For each server: number of low CPU instances, total records, percentage of time below threshold\n"
+        "- Lowest CPU value recorded for each server\n"
+        "- Shows up to 20 servers with additional count if more exist\n\n"
+        "Notes:\n"
+        "- Threshold must be between 0-100%\n"
+        "- Only processes servers with valid CPU utilization data\n"
+        "- Results help identify underutilized or idle servers\n"
+        "- Useful for capacity planning and resource optimization\n\n"
+        "Format: Action: IdentifyLowCpuServers[\"<query>\"]"
+    ),
+    return_direct=True,
+)
+
+]
+>>>>>>> 7a8e06c956366eb55b41c0ff2eb97ff83e15207b
