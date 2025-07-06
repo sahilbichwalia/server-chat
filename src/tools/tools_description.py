@@ -21,6 +21,8 @@ from src.tools.tool_function import (
     generate_csv_report 
 )
 from src.tools.rag import query_documents, list_available_documents
+from src.tools.prediction import predict_server_metrics_tool
+from src.tools.tool_function import identify_low_cpu_servers
 
 tools = [
     Tool(
@@ -516,5 +518,47 @@ tools = [
         "**Returns:** File path of the generated `.csv` file (e.g., `temp_reports/server_report_abc.csv`).\n"
         "Final answer should include: 'Your detailed CSV report is ready! You can download it here: [file_path]'"
     )
-)
+),
+  Tool(
+    name="ServerMetricsPredictor",
+    func=predict_server_metrics_tool,
+    description=(
+        "Predict server metrics (CPU utilization, ambient temperature, power consumption) for future dates. "
+        "Uses Prophet machine learning models trained on historical server data. "
+        "Input should be a natural language query containing:\n"
+        "- Server serial number (e.g., '2M270600W3')\n"
+        "- Target date (e.g., 'March 27, 2028', 'tomorrow', '2028-03-27')\n"
+        "- Optional: specific metrics (CPU utilization, ambient temperature, peak power, etc.)\n\n"
+        "Examples:\n"
+        "- 'CPU utilization for server 2M270600W3 on March 27, 2028'\n"
+        "- 'Ambient temperature for server ABC123 tomorrow'\n"
+        "- 'What will be the peak power for server XYZ789 next week?'\n"
+        "- 'Predict all metrics for server 2M270600W3 on 2028-12-25'"
+    ),
+    return_direct=True
+),
+Tool(
+    name="IdentifyLowCpuServers", 
+    func=identify_low_cpu_servers,
+    description=(
+        "Use this tool to find servers with CPU usage below a specified threshold. "
+        "The query must contain a numeric threshold value (e.g., 'CPU below 20%', 'underutilized servers under 10').\n\n"
+        "Example inputs:\n"
+        "- 'Show servers with CPU below 15%'\n"
+        "- 'Find underutilized servers under 25%'\n"
+        "- 'Which servers have low CPU usage below 30%?'\n\n"
+        "Returns:\n"
+        "- List of servers sorted by prevalence of low CPU usage and minimum CPU observed\n"
+        "- For each server: number of low CPU instances, total records, percentage of time below threshold\n"
+        "- Lowest CPU value recorded for each server\n"
+        "- Shows up to 20 servers with additional count if more exist\n\n"
+        "Notes:\n"
+        "- Threshold must be between 0-100%\n"
+        "- Only processes servers with valid CPU utilization data\n"
+        "- Results help identify underutilized or idle servers\n"
+        "- Useful for capacity planning and resource optimization\n\n"
+        "Format: Action: IdentifyLowCpuServers[\"<query>\"]"
+    ),
+    return_direct=True,
+),
 ]
