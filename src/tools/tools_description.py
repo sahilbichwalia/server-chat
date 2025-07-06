@@ -560,5 +560,5 @@ Tool(
         "Format: Action: IdentifyLowCpuServers[\"<query>\"]"
     ),
     return_direct=True,
-),
+)
 ]
