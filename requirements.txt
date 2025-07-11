@@ -13,3 +13,5 @@ word2number
 
 gradio
 python-dotenv
+prophet
+
