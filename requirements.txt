@@ -8,6 +8,8 @@ chromadb
 
 pypdf
 transformers
+sentence-transformers
+reportlab
 
 word2number
 

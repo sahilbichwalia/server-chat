@@ -1,10 +1,17 @@
 # src/etl/celery_app.py
 from celery import Celery
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+BROKER=os.getenv("BROKER")
+BACKEND=os.getenv("BACKEND")
 
 celery_app = Celery(
     "etl_tasks",
-    broker="redis://localhost:6379/0",
-    backend="redis://localhost:6379/0"
+    broker=BROKER,
+    backend=BACKEND
 )
 
 celery_app.conf.beat_schedule = {
