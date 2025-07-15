@@ -535,7 +535,7 @@ tools = [
         "- 'What will be the peak power for server XYZ789 next week?'\n"
         "- 'Predict all metrics for server 2M270600W3 on 2028-12-25'"
     ),
-    return_direct=True
+    
 ),
 Tool(
     name="IdentifyLowCpuServers", 
@@ -559,6 +559,6 @@ Tool(
         "- Useful for capacity planning and resource optimization\n\n"
         "Format: Action: IdentifyLowCpuServers[\"<query>\"]"
     ),
-    return_direct=True,
+    
 )
 ]

@@ -15,3 +15,6 @@ gradio
 python-dotenv
 prophet
 
+pymongo
+celery
+
