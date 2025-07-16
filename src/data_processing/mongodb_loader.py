@@ -1,4 +1,4 @@
-# src/data_processing/mongodb_loader.py
+
 from pymongo import MongoClient
 from typing import List, Dict, Any
 import logging

@@ -62,10 +62,7 @@ class IntegratedChatSystem:
         if final_answer_match:
             response_text = final_answer_match.group(1).strip()
         else:
-            # If no "Final Answer:", check if it's an Observation (tool output)
-            # This part is tricky because `return_direct=True` tools bypass this.
-            # This cleanup is more for when `return_direct=False` or if the agent is trying to summarize.
-            # For now, this simpler cleanup should be okay since most tools are direct.
+            
             pass
 
         # Remove any remaining ReAct keywords if the LLM didn't stop cleanly after a Final Answer

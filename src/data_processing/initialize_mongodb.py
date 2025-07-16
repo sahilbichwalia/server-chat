@@ -1,4 +1,4 @@
-# src/data_processing/initialize_mongodb.py
+
 import json
 from pathlib import Path
 from pymongo import MongoClient

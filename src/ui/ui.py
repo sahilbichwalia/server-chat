@@ -58,7 +58,7 @@ def create_gradio_interface(server_data=None):
                 "Show me records for server SGH949WW81 where amb_temp is greater_than 28", # Agent must translate this to JSON
                 "Identify servers with CPU utilization consistently above 85%",
                 "What are the timestamps for server SGH001TEST?",
-                "Hello there"],  # Keep your existing examples
+                "Hello there"],  # add example queries 
             inputs=msg_input,
             label="Example Questions"
         )
@@ -77,9 +77,7 @@ def create_gradio_interface(server_data=None):
         )
 
 
-        # Wire up the chat processing function
-        # submit_btn.click(chat_system.process_query, [msg_input, chatbot_ui], [msg_input, chatbot_ui])
-        # msg_input.submit(chat_system.process_query, [msg_input, chatbot_ui], [msg_input, chatbot_ui])
+        
 
     logger.info("Gradio interface created successfully.")
     return demo

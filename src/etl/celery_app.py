@@ -23,5 +23,5 @@ celery_app.conf.beat_schedule = {
 
 celery_app.conf.timezone = 'Asia/Kolkata'
 
-# ✅ This line forces task registration
+# This line forces task registration
 import src.etl.etl_job

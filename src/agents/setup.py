@@ -18,7 +18,6 @@ api_key = os.getenv("api_key")
 os.environ["GOOGLE_API_KEY"] = api_key
 
 # Global LLM_INSTANCE for consistency, assuming BASE_MODEL is defined elsewhere (e.g., config.py)
-# For this example, I'll define a placeholder for BASE_MODEL if it's not in this snippet
 try:
     from src.common.constant import BASE_MODEL, EMBEDDING_MODEL
 except ImportError:
@@ -110,7 +109,7 @@ def setup_agent(current_llm):
     Agent scratchpad (your previous thoughts, actions, and observations for this current question):
     {agent_scratchpad}"""
 
-    # Using ChatPromptTemplate.from_template to ensure proper handling by create_react_agent
+    
     prompt = ChatPromptTemplate.from_template(system_template)
 
     memory = ConversationBufferWindowMemory(

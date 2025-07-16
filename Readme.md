@@ -52,6 +52,11 @@ Create a `.env` file in the project root:
 ```env
 # Google API Configuration
 api_key=your_google_api_key_here
+MONGO_URI=your_mongo_uri
+MONGO_DB_NAME=your_db_name
+MONGO_DEFAULT_COLLECTION=your_default_collection  (servers)
+BROKER="redis://localhost:6379/0"
+BACKEND="redis://localhost:6379/0"
 
 # Model Configuration
 BASE_MODEL=gemma2:9b
@@ -112,15 +117,15 @@ The project currently uses:
 
 2. **Ollama Configuration** (commented out):
    ```python
-   # LLM_INSTANCE = ChatOllama(
-   #     model=BASE_MODEL,  # gemma2:9b
-   #     temperature=0.05,
-   #     top_k=10,
-   #     top_p=0.7,
-   #     request_timeout=120,
-   #     max_iterations=3,
-   #     system_message="You are a helpful AI assistant..."
-   # )
+    LLM_INSTANCE = ChatOllama(
+        model=BASE_MODEL,  # gemma2:9b
+        temperature=0.05,
+        top_k=10,
+        top_p=0.7,
+        request_timeout=120,
+        max_iterations=3,
+        system_message="You are a helpful AI assistant..."
+    )
    ```
 
 3. **HuggingFace Embeddings**:
@@ -234,6 +239,49 @@ The chatbot specializes in:
    - The terminal shows ChromaDB deprecation warnings
    - Update to newer versions or use `langchain-chroma` package
    - Current functionality remains unaffected
+
+
+## ETL System Monitoring Pipeline :
+
+   - A background task runs periodically using Celery to fetch, process, and store server monitoring data into MongoDB for further analytics and ranking.
+
+   ## Purpose
+      - Fetch fresh raw server metrics (e.g., CPU, memory, disk)
+      - Apply data processing/cleaning
+      - Store the transformed data into MongoDB (processed_servers collection)
+      - Generate server rankings by CPU utilization (top and bottom)
+      - timestamp every ETL run for traceability
+
+   ## File Location 
+      - src/etl/etl_job.py
+
+   ## How It Works
+      - Triggered periodically via Celery beat (or manually during testing)
+      - Uses get_fresh_server_data() and process_server_data() from the data_processing module
+      - Updates MongoDB:
+         - Clears previous processed_servers and server_rankings
+         - Inserts new cleaned server entries
+         - Generates and inserts top/bottom CPU utilization rankings
+
+   ## MongoDB Collections Used
+      - processed_servers: Stores each server's processed metrics
+      - server_rankings: Stores sorted rankings of servers by CPU performance
+   
+   ## Dependencies
+      Make sure your .env includes the following:
+   ```
+      MONGO_URI=your_mongo_uri
+      MONGO_DB_NAME=your_db_name
+      BROKER=redis://localhost:6379/0
+      BACKEND=redis://localhost:6379/0
+   ```
+      Also, ensure Redis and the Celery worker are running:
+      # Start Redis
+      redis-server
+
+      # Start Celery worker
+      celery -A src.etl.celery_app worker --loglevel=info
+
 
 ### Performance Optimization
 
