@@ -8,8 +8,15 @@ chromadb
 
 pypdf
 transformers
+sentence-transformers
+reportlab
 
 word2number
 
 gradio
 python-dotenv
+prophet
+
+pymongo
+celery
+
