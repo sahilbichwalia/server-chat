@@ -57,10 +57,6 @@ MONGO_DB_NAME=your_db_name
 MONGO_DEFAULT_COLLECTION=your_default_collection  (servers)
 BROKER="redis://localhost:6379/0"
 BACKEND="redis://localhost:6379/0"
-
-# Model Configuration
-BASE_MODEL=gemma2:9b
-EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 ```
 
 ### 4. Project Structure
