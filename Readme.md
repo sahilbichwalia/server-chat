@@ -275,8 +275,11 @@ The chatbot specializes in:
       # Start Redis
       redis-server
 
-      # Start Celery
+      # Start Celery Beat
       celery -A src.etl.celery_app beat -l info
+
+      # Stat Celery worker
+      celery -A src.etl.celery_app worker -l info -P gevent
 
 
 ### Performance Optimization
